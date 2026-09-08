@@ -11,6 +11,7 @@
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
 #define MAX_TOKEN_LEN 128
+#define MAX_VIEWS 64
 #define SQL_FILE "heaven_sql.hdb"
 #define SQL_MAGIC 0x53514C31
 
@@ -18,6 +19,14 @@ static Table *tables[MAX_TABLES];
 static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
+
+typedef struct {
+    char name[MAX_TABLE_NAME];
+    char sql[512];
+} View;
+
+static View views[MAX_VIEWS];
+static int view_count = 0;
 
 static Table *find_table(const char *name);
 
@@ -841,6 +850,187 @@ static int handle_delete(TokenList *tokens) {
     return 0;
 }
 
+// ==================== JOIN HANDLER ====================
+
+static int handle_join(TokenList *tokens) {
+    if (tokens->count < 8) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table1_name[MAX_TABLE_NAME];
+    strcpy(table1_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table1 = find_table(table1_name);
+    if (!table1) {
+        printf("ERROR: Table '%s' not found\n", table1_name);
+        return -1;
+    }
+    
+    int join_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "JOIN") == 0) {
+            join_idx = i;
+            break;
+        }
+    }
+    
+    if (join_idx == -1) return -1;
+    
+    char table2_name[MAX_TABLE_NAME];
+    strcpy(table2_name, tokens->tokens[join_idx + 1]);
+    
+    Table *table2 = find_table(table2_name);
+    if (!table2) {
+        printf("ERROR: Table '%s' not found\n", table2_name);
+        return -1;
+    }
+    
+    int on_idx = -1;
+    for (int i = join_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "ON") == 0) {
+            on_idx = i;
+            break;
+        }
+    }
+    
+    if (on_idx == -1) return -1;
+    
+    char t1_col[64];
+    char t2_col[64];
+    
+    // Parse users.id and orders.user_id (each is a single token like "users.id")
+char full_col1[128];
+char full_col2[128];
+
+strcpy(full_col1, tokens->tokens[on_idx + 1]);
+strcpy(full_col2, tokens->tokens[on_idx + 3]);
+
+// Extract column name after the dot
+char *dot1 = strchr(full_col1, '.');
+char *dot2 = strchr(full_col2, '.');
+
+if (dot1) strcpy(t1_col, dot1 + 1);
+else strcpy(t1_col, full_col1);
+
+if (dot2) strcpy(t2_col, dot2 + 1);
+else strcpy(t2_col, full_col2);
+    
+    int t1_col_idx = table_get_column_index(table1, t1_col);
+    int t2_col_idx = table_get_column_index(table2, t2_col);
+    
+    if (t1_col_idx == -1 || t2_col_idx == -1) {
+        printf("ERROR: Column not found\n");
+        return -1;
+    }
+    
+    for (int i = 0; i < table1->column_count; i++) {
+        printf("%-15s ", table1->columns[i].name);
+    }
+    for (int i = 0; i < table2->column_count; i++) {
+        printf("%-15s ", table2->columns[i].name);
+    }
+    printf("\n");
+    
+    for (int i = 0; i < table1->column_count + table2->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    for (size_t r1 = 0; r1 < table1->row_count; r1++) {
+        void **row1 = (void**)table1->rows[r1];
+        
+        for (size_t r2 = 0; r2 < table2->row_count; r2++) {
+            void **row2 = (void**)table2->rows[r2];
+            
+            int val1 = *(int*)row1[t1_col_idx];
+            int val2 = *(int*)row2[t2_col_idx];
+            
+            if (val1 == val2) {
+                for (int i = 0; i < table1->column_count; i++) {
+                    switch (table1->columns[i].type) {
+                        case TYPE_INTEGER:
+                            printf("%-15d ", *(int*)row1[i]);
+                            break;
+                        case TYPE_TEXT:
+                            printf("%-15s ", (char*)row1[i]);
+                            break;
+                        case TYPE_FLOAT:
+                            printf("%-15.2f ", *(double*)row1[i]);
+                            break;
+                    }
+                }
+                for (int i = 0; i < table2->column_count; i++) {
+                    switch (table2->columns[i].type) {
+                        case TYPE_INTEGER:
+                            printf("%-15d ", *(int*)row2[i]);
+                            break;
+                        case TYPE_TEXT:
+                            printf("%-15s ", (char*)row2[i]);
+                            break;
+                        case TYPE_FLOAT:
+                            printf("%-15.2f ", *(double*)row2[i]);
+                            break;
+                    }
+                }
+                printf("\n");
+                match_count++;
+            }
+        }
+    }
+    
+    printf("(%d row%s)\n\n", match_count, match_count == 1 ? "" : "s");
+    return 0;
+}
+
+// ==================== VIEW HANDLERS ====================
+
+static int handle_create_view(TokenList *tokens) {
+    if (tokens->count < 5) return -1;
+    
+    char view_name[MAX_TABLE_NAME];
+    strcpy(view_name, tokens->tokens[2]);
+    
+    char sql[512] = "";
+    for (int i = 4; i < tokens->count; i++) {
+        strcat(sql, tokens->tokens[i]);
+        if (i < tokens->count - 1) strcat(sql, " ");
+    }
+    
+    if (view_count < MAX_VIEWS) {
+        strcpy(views[view_count].name, view_name);
+        strcpy(views[view_count].sql, sql);
+        view_count++;
+        printf("OK. Created view '%s'\n", view_name);
+    } else {
+        printf("ERROR: Too many views\n");
+    }
+    return 0;
+}
+
+static int handle_select_view(TokenList *tokens) {
+    char view_name[MAX_TABLE_NAME];
+    strcpy(view_name, tokens->tokens[3]);
+    
+    for (int i = 0; i < view_count; i++) {
+        if (strcmp(views[i].name, view_name) == 0) {
+            sql_execute(views[i].sql);
+            return 0;
+        }
+    }
+    
+    printf("ERROR: View '%s' not found\n", view_name);
+    return -1;
+}
+
 // ==================== AUTH HANDLERS ====================
 
 static int handle_create_user(TokenList *tokens) {
@@ -878,6 +1068,8 @@ static int handle_login(TokenList *tokens) {
 }
 
 static int handle_logout(TokenList *tokens) {
+    (void)tokens;
+    
     if (auth_is_logged_in(auth_system)) {
         printf("OK. Logged out '%s'\n", auth_current_user(auth_system));
         auth_logout(auth_system);
@@ -891,6 +1083,7 @@ static int handle_logout(TokenList *tokens) {
 
 void sql_init(void) {
     table_count = 0;
+    view_count = 0;
     sql_load();
     if (!auth_system) {
         auth_system = auth_create();
@@ -905,6 +1098,7 @@ void sql_shutdown(void) {
         table_destroy(tables[i]);
     }
     table_count = 0;
+    view_count = 0;
     if (active_wal) {
         wal_destroy(active_wal);
         active_wal = NULL;
@@ -960,6 +1154,9 @@ int sql_execute(const char *sql) {
         else if (strcmp(second, "USER") == 0) {
             return handle_create_user(&list);
         }
+        else if (strcmp(second, "VIEW") == 0) {
+            return handle_create_view(&list);
+        }
     }
     else if (strcmp(command, "LOGIN") == 0) {
         return handle_login(&list);
@@ -971,6 +1168,22 @@ int sql_execute(const char *sql) {
         return handle_insert(&list);
     }
     else if (strcmp(command, "SELECT") == 0) {
+        int has_join = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "JOIN") == 0) {
+                has_join = 1;
+                break;
+            }
+        }
+        
+        if (has_join) {
+            return handle_join(&list);
+        }
+        
+        if (!find_table(list.tokens[3])) {
+            return handle_select_view(&list);
+        }
+        
         return handle_select(&list);
     }
     else if (strcmp(command, "UPDATE") == 0) {
