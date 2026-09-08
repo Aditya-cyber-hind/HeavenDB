@@ -7,6 +7,7 @@
 #include "btree.h"
 #include "wal.h"
 #include "auth.h"
+#include "auth_storage.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -507,6 +508,7 @@ static int handle_create_table(TokenList *tokens) {
     }
     
     tables[table_count++] = table;
+    sql_save();
     printf("OK. Created table '%s'\n", table_name);
     return 0;
 }
@@ -595,6 +597,7 @@ static int handle_insert(TokenList *tokens) {
         printf("OK. Inserted 1 row (pending commit)\n");
     } else {
         table_insert(table, values);
+        sql_save();
         printf("OK. Inserted 1 row\n");
     }
     
@@ -782,6 +785,7 @@ static int handle_update(TokenList *tokens) {
             }
         }
         
+        sql_save();
         printf("OK. Updated %d row%s\n", updated, updated == 1 ? "" : "s");
     } else {
         printf("ERROR: UPDATE without WHERE is too dangerous. Add a WHERE clause.\n");
@@ -846,6 +850,7 @@ static int handle_delete(TokenList *tokens) {
         }
     }
     
+    sql_save();
     printf("OK. Deleted %d row%s\n", deleted, deleted == 1 ? "" : "s");
     return 0;
 }
@@ -905,23 +910,20 @@ static int handle_join(TokenList *tokens) {
     
     char t1_col[64];
     char t2_col[64];
+    char full_col1[128];
+    char full_col2[128];
     
-    // Parse users.id and orders.user_id (each is a single token like "users.id")
-char full_col1[128];
-char full_col2[128];
-
-strcpy(full_col1, tokens->tokens[on_idx + 1]);
-strcpy(full_col2, tokens->tokens[on_idx + 3]);
-
-// Extract column name after the dot
-char *dot1 = strchr(full_col1, '.');
-char *dot2 = strchr(full_col2, '.');
-
-if (dot1) strcpy(t1_col, dot1 + 1);
-else strcpy(t1_col, full_col1);
-
-if (dot2) strcpy(t2_col, dot2 + 1);
-else strcpy(t2_col, full_col2);
+    strcpy(full_col1, tokens->tokens[on_idx + 1]);
+    strcpy(full_col2, tokens->tokens[on_idx + 3]);
+    
+    char *dot1 = strchr(full_col1, '.');
+    char *dot2 = strchr(full_col2, '.');
+    
+    if (dot1) strcpy(t1_col, dot1 + 1);
+    else strcpy(t1_col, full_col1);
+    
+    if (dot2) strcpy(t2_col, dot2 + 1);
+    else strcpy(t2_col, full_col2);
     
     int t1_col_idx = table_get_column_index(table1, t1_col);
     int t2_col_idx = table_get_column_index(table2, t2_col);
@@ -1043,9 +1045,8 @@ static int handle_create_user(TokenList *tokens) {
     strcpy(password, tokens->tokens[5]);
     
     if (auth_create_user(auth_system, username, password) == 0) {
+        auth_save(auth_system);
         printf("OK. Created user '%s'\n", username);
-    } else {
-        printf("ERROR: User '%s' already exists or too many users\n", username);
     }
     return 0;
 }
@@ -1060,9 +1061,10 @@ static int handle_login(TokenList *tokens) {
     strcpy(password, tokens->tokens[4]);
     
     if (auth_login(auth_system, username, password) == 0) {
+        auth_save(auth_system);
         printf("OK. Logged in as '%s'\n", username);
     } else {
-        printf("ERROR: Invalid username or password\n");
+        auth_save(auth_system);
     }
     return 0;
 }
@@ -1073,9 +1075,29 @@ static int handle_logout(TokenList *tokens) {
     if (auth_is_logged_in(auth_system)) {
         printf("OK. Logged out '%s'\n", auth_current_user(auth_system));
         auth_logout(auth_system);
+        auth_save(auth_system);
     } else {
         printf("ERROR: Not logged in\n");
     }
+    return 0;
+}
+
+static int handle_change_password(TokenList *tokens) {
+    if (tokens->count < 3) return -1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        printf("ERROR: Not logged in\n");
+        return -1;
+    }
+    
+    char new_password[128];
+    strcpy(new_password, tokens->tokens[2]);
+    
+    if (auth_change_password(auth_system, new_password) == 0) {
+        auth_save(auth_system);
+        printf("OK. Password updated for '%s'\n", auth_current_user(auth_system));
+    }
+    
     return 0;
 }
 
@@ -1087,7 +1109,8 @@ void sql_init(void) {
     sql_load();
     if (!auth_system) {
         auth_system = auth_create();
-        printf("Auth system initialized. Default user: admin / admin123\n");
+        auth_load(auth_system);
+        printf("Auth system loaded. %d user(s) registered.\n", auth_system->user_count);
     }
     printf("HeavenDB SQL Engine initialized.\n");
 }
@@ -1104,6 +1127,7 @@ void sql_shutdown(void) {
         active_wal = NULL;
     }
     if (auth_system) {
+        auth_save(auth_system);
         auth_destroy(auth_system);
         auth_system = NULL;
     }
@@ -1163,6 +1187,9 @@ int sql_execute(const char *sql) {
     }
     else if (strcmp(command, "LOGOUT") == 0) {
         return handle_logout(&list);
+    }
+    else if (strcmp(command, "CHANGE") == 0) {
+        return handle_change_password(&list);
     }
     else if (strcmp(command, "INSERT") == 0) {
         return handle_insert(&list);
