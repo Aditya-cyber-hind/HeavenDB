@@ -292,7 +292,6 @@ int sql_begin(void) {
 int sql_commit(void) {
     if (!active_wal) return -1;
     
-    // Apply pending WAL entries to tables
     WALEntry *entry = active_wal->head;
     while (entry) {
         if (entry->type == WAL_INSERT) {
@@ -558,9 +557,7 @@ static int handle_insert(TokenList *tokens) {
         return -1;
     }
     
-    // If in a transaction, log to WAL instead of direct insert
     if (active_wal && active_wal->in_transaction) {
-        // For simplicity, we convert values to strings for WAL
         char **str_values = (char**)malloc(table->column_count * sizeof(char*));
         for (int j = 0; j < table->column_count; j++) {
             char buf[128];
@@ -639,13 +636,11 @@ static int handle_select(TokenList *tokens) {
         }
     }
     
-    // No WHERE clause
     if (from_idx + 2 >= tokens->count || strcmp(tokens->tokens[from_idx + 2], "WHERE") != 0) {
         print_table(table, column_indices, col_count);
         return 0;
     }
     
-    // WHERE clause
     char col_name[64];
     char op[4];
     char value[128];
@@ -708,6 +703,141 @@ static int handle_select(TokenList *tokens) {
     }
     printf("(%d row%s)\n\n", match_count, match_count == 1 ? "" : "s");
     
+    return 0;
+}
+
+static int handle_update(TokenList *tokens) {
+    // UPDATE users SET age = 26 WHERE id = 1
+    if (tokens->count < 6) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char set_col[64];
+    char set_value[128];
+    
+    strcpy(set_col, tokens->tokens[3]);
+    strcpy(set_value, tokens->tokens[5]);
+    
+    int set_idx = table_get_column_index(table, set_col);
+    if (set_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", set_col);
+        return -1;
+    }
+    
+    if (tokens->count >= 8 && strcmp(tokens->tokens[6], "WHERE") == 0) {
+        char where_col[64];
+        char where_op[4];
+        char where_value[128];
+        
+        strcpy(where_col, tokens->tokens[7]);
+        strcpy(where_op, tokens->tokens[8]);
+        strcpy(where_value, tokens->tokens[9]);
+        
+        int where_idx = table_get_column_index(table, where_col);
+        if (where_idx == -1) {
+            printf("ERROR: Column '%s' not found\n", where_col);
+            return -1;
+        }
+        
+        int updated = 0;
+        int cond_val = atoi(where_value);
+        
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **row = (void**)table->rows[r];
+            
+            int matches = 0;
+            if (table->columns[where_idx].type == TYPE_INTEGER) {
+                int row_val = *(int*)row[where_idx];
+                if (strcmp(where_op, "=") == 0 && row_val == cond_val) matches = 1;
+                else if (strcmp(where_op, ">") == 0 && row_val > cond_val) matches = 1;
+                else if (strcmp(where_op, "<") == 0 && row_val < cond_val) matches = 1;
+            }
+            
+            if (matches) {
+                if (table->columns[set_idx].type == TYPE_INTEGER) {
+                    *(int*)row[set_idx] = atoi(set_value);
+                } else if (table->columns[set_idx].type == TYPE_TEXT) {
+                    free(row[set_idx]);
+                    row[set_idx] = (void*)malloc(strlen(set_value) + 1);
+                    strcpy((char*)row[set_idx], set_value);
+                }
+                updated++;
+            }
+        }
+        
+        printf("OK. Updated %d row%s\n", updated, updated == 1 ? "" : "s");
+    } else {
+        printf("ERROR: UPDATE without WHERE is too dangerous. Add a WHERE clause.\n");
+        return -1;
+    }
+    
+    return 0;
+}
+
+static int handle_delete(TokenList *tokens) {
+    // DELETE FROM users WHERE id = 1
+    if (tokens->count < 6) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[2]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char where_col[64];
+    char where_op[4];
+    char where_value[128];
+    
+    strcpy(where_col, tokens->tokens[4]);
+    strcpy(where_op, tokens->tokens[5]);
+    strcpy(where_value, tokens->tokens[6]);
+    
+    int where_idx = table_get_column_index(table, where_col);
+    if (where_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", where_col);
+        return -1;
+    }
+    
+    int deleted = 0;
+    int cond_val = atoi(where_value);
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        
+        int matches = 0;
+        if (table->columns[where_idx].type == TYPE_INTEGER) {
+            int row_val = *(int*)row[where_idx];
+            if (strcmp(where_op, "=") == 0 && row_val == cond_val) matches = 1;
+            else if (strcmp(where_op, ">") == 0 && row_val > cond_val) matches = 1;
+            else if (strcmp(where_op, "<") == 0 && row_val < cond_val) matches = 1;
+        }
+        
+        if (matches) {
+            for (int c = 0; c < table->column_count; c++) {
+                free(row[c]);
+            }
+            free(row);
+            
+            for (size_t j = r; j < table->row_count - 1; j++) {
+                table->rows[j] = table->rows[j + 1];
+            }
+            table->row_count--;
+            r--;
+            deleted++;
+        }
+    }
+    
+    printf("OK. Deleted %d row%s\n", deleted, deleted == 1 ? "" : "s");
     return 0;
 }
 
@@ -779,6 +909,12 @@ int sql_execute(const char *sql) {
     }
     else if (strcmp(command, "SELECT") == 0) {
         return handle_select(&list);
+    }
+    else if (strcmp(command, "UPDATE") == 0) {
+        return handle_update(&list);
+    }
+    else if (strcmp(command, "DELETE") == 0) {
+        return handle_delete(&list);
     }
     else {
         printf("ERROR: Unknown SQL command '%s'\n", command);
