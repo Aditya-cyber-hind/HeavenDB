@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include "btree.h"
+#include "wal.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -14,6 +15,9 @@
 
 static Table *tables[MAX_TABLES];
 static int table_count = 0;
+static WAL *active_wal = NULL;
+
+static Table *find_table(const char *name);
 
 // ==================== PERSISTENCE ====================
 
@@ -275,6 +279,77 @@ int sql_load(void) {
     return 0;
 }
 
+// ==================== TRANSACTIONS ====================
+
+int sql_begin(void) {
+    if (!active_wal) {
+        active_wal = wal_create();
+        if (!active_wal) return -1;
+    }
+    return wal_begin(active_wal);
+}
+
+int sql_commit(void) {
+    if (!active_wal) return -1;
+    
+    // Apply pending WAL entries to tables
+    WALEntry *entry = active_wal->head;
+    while (entry) {
+        if (entry->type == WAL_INSERT) {
+            Table *table = find_table(entry->table_name);
+            if (table) {
+                void **values = (void**)malloc(table->column_count * sizeof(void*));
+                
+                for (int i = 0; i < table->column_count; i++) {
+                    char *str = (char*)entry->values[i];
+                    
+                    switch (table->columns[i].type) {
+                        case TYPE_INTEGER: {
+                            int *val = (int*)malloc(sizeof(int));
+                            *val = atoi(str);
+                            values[i] = val;
+                            break;
+                        }
+                        case TYPE_TEXT: {
+                            char *copy = (char*)malloc(strlen(str) + 1);
+                            strcpy(copy, str);
+                            values[i] = copy;
+                            break;
+                        }
+                        case TYPE_FLOAT: {
+                            double *val = (double*)malloc(sizeof(double));
+                            *val = atof(str);
+                            values[i] = val;
+                            break;
+                        }
+                    }
+                }
+                
+                table_insert(table, values);
+                
+                for (int i = 0; i < table->column_count; i++) {
+                    free(values[i]);
+                }
+                free(values);
+            }
+        }
+        entry = entry->next;
+    }
+    
+    int result = wal_commit(active_wal);
+    wal_destroy(active_wal);
+    active_wal = NULL;
+    return result;
+}
+
+int sql_rollback(void) {
+    if (!active_wal) return -1;
+    int result = wal_rollback(active_wal);
+    wal_destroy(active_wal);
+    active_wal = NULL;
+    return result;
+}
+
 // ==================== TOKENIZER ====================
 
 typedef struct {
@@ -483,12 +558,41 @@ static int handle_insert(TokenList *tokens) {
         return -1;
     }
     
-    table_insert(table, values);
+    // If in a transaction, log to WAL instead of direct insert
+    if (active_wal && active_wal->in_transaction) {
+        // For simplicity, we convert values to strings for WAL
+        char **str_values = (char**)malloc(table->column_count * sizeof(char*));
+        for (int j = 0; j < table->column_count; j++) {
+            char buf[128];
+            switch (table->columns[j].type) {
+                case TYPE_INTEGER:
+                    snprintf(buf, sizeof(buf), "%d", *(int*)values[j]);
+                    break;
+                case TYPE_TEXT:
+                    snprintf(buf, sizeof(buf), "%s", (char*)values[j]);
+                    break;
+                case TYPE_FLOAT:
+                    snprintf(buf, sizeof(buf), "%f", *(double*)values[j]);
+                    break;
+            }
+            str_values[j] = (char*)malloc(strlen(buf) + 1);
+            strcpy(str_values[j], buf);
+        }
+        
+        wal_log_insert(active_wal, table_name, (void**)str_values, table->column_count);
+        
+        for (int j = 0; j < table->column_count; j++) free(str_values[j]);
+        free(str_values);
+        
+        printf("OK. Inserted 1 row (pending commit)\n");
+    } else {
+        table_insert(table, values);
+        printf("OK. Inserted 1 row\n");
+    }
     
     for (int j = 0; j < table->column_count; j++) free(values[j]);
     free(values);
     
-    printf("OK. Inserted 1 row\n");
     return 0;
 }
 
@@ -535,13 +639,13 @@ static int handle_select(TokenList *tokens) {
         }
     }
     
-    // No WHERE clause - print all rows
+    // No WHERE clause
     if (from_idx + 2 >= tokens->count || strcmp(tokens->tokens[from_idx + 2], "WHERE") != 0) {
         print_table(table, column_indices, col_count);
         return 0;
     }
     
-    // WHERE clause exists
+    // WHERE clause
     char col_name[64];
     char op[4];
     char value[128];
@@ -556,7 +660,6 @@ static int handle_select(TokenList *tokens) {
         return -1;
     }
     
-    // Print header
     for (int i = 0; i < col_count; i++) {
         printf("%-15s ", table->columns[column_indices[i]].name);
     }
@@ -622,6 +725,10 @@ void sql_shutdown(void) {
         table_destroy(tables[i]);
     }
     table_count = 0;
+    if (active_wal) {
+        wal_destroy(active_wal);
+        active_wal = NULL;
+    }
 }
 
 int sql_execute(const char *sql) {
@@ -634,7 +741,31 @@ int sql_execute(const char *sql) {
     strcpy(command, list.tokens[0]);
     to_upper(command);
     
-    if (strcmp(command, "CREATE") == 0) {
+    if (strcmp(command, "BEGIN") == 0) {
+        if (sql_begin() == 0) {
+            printf("OK. Transaction started\n");
+        } else {
+            printf("ERROR: Already in transaction\n");
+        }
+        return 0;
+    }
+    else if (strcmp(command, "COMMIT") == 0) {
+        if (sql_commit() == 0) {
+            printf("OK. Transaction committed\n");
+        } else {
+            printf("ERROR: No active transaction\n");
+        }
+        return 0;
+    }
+    else if (strcmp(command, "ROLLBACK") == 0) {
+        if (sql_rollback() == 0) {
+            printf("OK. Transaction rolled back\n");
+        } else {
+            printf("ERROR: No active transaction\n");
+        }
+        return 0;
+    }
+    else if (strcmp(command, "CREATE") == 0) {
         char second[MAX_TOKEN_LEN];
         strcpy(second, list.tokens[1]);
         to_upper(second);
@@ -642,11 +773,14 @@ int sql_execute(const char *sql) {
         if (strcmp(second, "TABLE") == 0) {
             return handle_create_table(&list);
         }
-    } else if (strcmp(command, "INSERT") == 0) {
+    }
+    else if (strcmp(command, "INSERT") == 0) {
         return handle_insert(&list);
-    } else if (strcmp(command, "SELECT") == 0) {
+    }
+    else if (strcmp(command, "SELECT") == 0) {
         return handle_select(&list);
-    } else {
+    }
+    else {
         printf("ERROR: Unknown SQL command '%s'\n", command);
         return -1;
     }

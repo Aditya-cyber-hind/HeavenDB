@@ -19,4 +19,9 @@ int sql_save(void);
 // Loads all tables from disk
 int sql_load(void);
 
+// Transaction support
+int sql_begin(void);
+int sql_commit(void);
+int sql_rollback(void);
+
 #endif // HEAVENDB_SQL_H

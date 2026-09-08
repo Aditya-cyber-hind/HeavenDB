@@ -19,17 +19,16 @@ static void print_usage(void) {
     printf("  heavendb benchmark <n>           - Run n random operations\n");
     printf("  heavendb flush                   - Force write to disk\n");
     printf("  heavendb sql \"<SQL query>\"       - Execute SQL command\n");
+    printf("  heavendb shell                   - Start interactive mode\n");
     printf("  heavendb help                    - Show this help\n\n");
 }
 
 static void run_benchmark(Database *db, int operations) {
     printf("Running benchmark: %d operations...\n\n", operations);
     
-    // Phase 1: In-Memory GET benchmark (tests Hash Map speed)
     printf("Phase 1: In-Memory GET Benchmark\n");
     printf("----------------------------------\n");
     
-    // Insert 1000 keys into memory directly
     for (int i = 0; i < 1000; i++) {
         char key[32];
         char value[64];
@@ -55,7 +54,6 @@ static void run_benchmark(Database *db, int operations) {
     printf("  Time: %.3f seconds\n", elapsed);
     printf("  Throughput: %.0f ops/sec\n\n", ops_per_sec);
     
-    // Phase 2: Disk SET benchmark (tests Group Commit)
     printf("Phase 2: Disk SET Benchmark (Group Commit)\n");
     printf("------------------------------------------\n");
     
@@ -70,7 +68,6 @@ static void run_benchmark(Database *db, int operations) {
         db_set(db, key, value, strlen(value));
     }
     
-    // Flush any remaining buffered writes
     db_flush(db);
     
     end = clock();
@@ -87,6 +84,36 @@ static void run_benchmark(Database *db, int operations) {
     printf("  Buffer Size: 100 writes per flush\n\n");
 }
 
+static void run_shell(void) {
+    sql_init();
+    printf("HeavenDB Interactive Shell\n");
+    printf("Type SQL commands or 'exit' to quit.\n\n");
+    
+    char input[1024];
+    while (1) {
+        printf("heavendb> ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) break;
+        
+        size_t len = strlen(input);
+        if (len > 0 && input[len-1] == '\n') {
+            input[len-1] = '\0';
+        }
+        
+        if (strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0) {
+            printf("Bye!\n");
+            break;
+        }
+        
+        if (strlen(input) > 0) {
+            sql_execute(input);
+        }
+    }
+    
+    sql_shutdown();
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_usage();
@@ -98,7 +125,11 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
-    // Handle SQL mode separately (no need for key-value DB)
+    if (strcmp(argv[1], "shell") == 0) {
+        run_shell();
+        return 0;
+    }
+    
     if (strcmp(argv[1], "sql") == 0) {
         if (argc != 3) {
             printf("Usage: heavendb sql \"<SQL query>\"\n");
@@ -110,7 +141,6 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
-    // Open key-value database
     Database *db = db_open(DB_FILE);
     if (!db) {
         fprintf(stderr, "ERROR: Failed to open database\n");
