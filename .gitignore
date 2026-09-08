@@ -1,0 +1,11 @@
+# Compiled executable
+*.exe
+
+# Database files
+*.hdb
+
+# Object files
+*.o
+
+# Debug files
+*.pdb
