@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "btree.h"
 #include "wal.h"
+#include "auth.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -16,6 +17,7 @@
 static Table *tables[MAX_TABLES];
 static int table_count = 0;
 static WAL *active_wal = NULL;
+static AuthSystem *auth_system = NULL;
 
 static Table *find_table(const char *name);
 
@@ -707,7 +709,6 @@ static int handle_select(TokenList *tokens) {
 }
 
 static int handle_update(TokenList *tokens) {
-    // UPDATE users SET age = 26 WHERE id = 1
     if (tokens->count < 6) return -1;
     
     char table_name[MAX_TABLE_NAME];
@@ -782,7 +783,6 @@ static int handle_update(TokenList *tokens) {
 }
 
 static int handle_delete(TokenList *tokens) {
-    // DELETE FROM users WHERE id = 1
     if (tokens->count < 6) return -1;
     
     char table_name[MAX_TABLE_NAME];
@@ -841,11 +841,61 @@ static int handle_delete(TokenList *tokens) {
     return 0;
 }
 
+// ==================== AUTH HANDLERS ====================
+
+static int handle_create_user(TokenList *tokens) {
+    if (tokens->count < 5) return -1;
+    
+    char username[64];
+    char password[128];
+    
+    strcpy(username, tokens->tokens[2]);
+    strcpy(password, tokens->tokens[5]);
+    
+    if (auth_create_user(auth_system, username, password) == 0) {
+        printf("OK. Created user '%s'\n", username);
+    } else {
+        printf("ERROR: User '%s' already exists or too many users\n", username);
+    }
+    return 0;
+}
+
+static int handle_login(TokenList *tokens) {
+    if (tokens->count < 5) return -1;
+    
+    char username[64];
+    char password[128];
+    
+    strcpy(username, tokens->tokens[1]);
+    strcpy(password, tokens->tokens[4]);
+    
+    if (auth_login(auth_system, username, password) == 0) {
+        printf("OK. Logged in as '%s'\n", username);
+    } else {
+        printf("ERROR: Invalid username or password\n");
+    }
+    return 0;
+}
+
+static int handle_logout(TokenList *tokens) {
+    if (auth_is_logged_in(auth_system)) {
+        printf("OK. Logged out '%s'\n", auth_current_user(auth_system));
+        auth_logout(auth_system);
+    } else {
+        printf("ERROR: Not logged in\n");
+    }
+    return 0;
+}
+
 // ==================== INIT/SHUTDOWN ====================
 
 void sql_init(void) {
     table_count = 0;
     sql_load();
+    if (!auth_system) {
+        auth_system = auth_create();
+        printf("Auth system initialized. Default user: admin / admin123\n");
+    }
     printf("HeavenDB SQL Engine initialized.\n");
 }
 
@@ -858,6 +908,10 @@ void sql_shutdown(void) {
     if (active_wal) {
         wal_destroy(active_wal);
         active_wal = NULL;
+    }
+    if (auth_system) {
+        auth_destroy(auth_system);
+        auth_system = NULL;
     }
 }
 
@@ -903,6 +957,15 @@ int sql_execute(const char *sql) {
         if (strcmp(second, "TABLE") == 0) {
             return handle_create_table(&list);
         }
+        else if (strcmp(second, "USER") == 0) {
+            return handle_create_user(&list);
+        }
+    }
+    else if (strcmp(command, "LOGIN") == 0) {
+        return handle_login(&list);
+    }
+    else if (strcmp(command, "LOGOUT") == 0) {
+        return handle_logout(&list);
     }
     else if (strcmp(command, "INSERT") == 0) {
         return handle_insert(&list);
