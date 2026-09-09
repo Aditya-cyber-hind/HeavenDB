@@ -8,6 +8,7 @@
 #include "wal.h"
 #include "auth.h"
 #include "auth_storage.h"
+#include "permissions.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -20,6 +21,7 @@ static Table *tables[MAX_TABLES];
 static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
+static PermissionSystem *perm_system = NULL;
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -855,7 +857,7 @@ static int handle_delete(TokenList *tokens) {
     return 0;
 }
 
-// ==================== JOIN HANDLER ====================
+// ==================== JOIN HANDLERS ====================
 
 static int handle_join(TokenList *tokens) {
     if (tokens->count < 8) return -1;
@@ -993,6 +995,166 @@ static int handle_join(TokenList *tokens) {
     return 0;
 }
 
+static int handle_left_join(TokenList *tokens) {
+    if (tokens->count < 8) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table1_name[MAX_TABLE_NAME];
+    strcpy(table1_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table1 = find_table(table1_name);
+    if (!table1) {
+        printf("ERROR: Table '%s' not found\n", table1_name);
+        return -1;
+    }
+    
+    int join_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "JOIN") == 0) {
+            join_idx = i;
+            break;
+        }
+    }
+    
+    if (join_idx == -1) return -1;
+    
+    char table2_name[MAX_TABLE_NAME];
+    strcpy(table2_name, tokens->tokens[join_idx + 1]);
+    
+    Table *table2 = find_table(table2_name);
+    if (!table2) {
+        printf("ERROR: Table '%s' not found\n", table2_name);
+        return -1;
+    }
+    
+    int on_idx = -1;
+    for (int i = join_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "ON") == 0) {
+            on_idx = i;
+            break;
+        }
+    }
+    
+    if (on_idx == -1) return -1;
+    
+    char t1_col[64];
+    char t2_col[64];
+    char full_col1[128];
+    char full_col2[128];
+    
+    strcpy(full_col1, tokens->tokens[on_idx + 1]);
+    strcpy(full_col2, tokens->tokens[on_idx + 3]);
+    
+    char *dot1 = strchr(full_col1, '.');
+    char *dot2 = strchr(full_col2, '.');
+    
+    if (dot1) strcpy(t1_col, dot1 + 1);
+    else strcpy(t1_col, full_col1);
+    
+    if (dot2) strcpy(t2_col, dot2 + 1);
+    else strcpy(t2_col, full_col2);
+    
+    int t1_col_idx = table_get_column_index(table1, t1_col);
+    int t2_col_idx = table_get_column_index(table2, t2_col);
+    
+    if (t1_col_idx == -1 || t2_col_idx == -1) {
+        printf("ERROR: Column not found\n");
+        return -1;
+    }
+    
+    for (int i = 0; i < table1->column_count; i++) {
+        printf("%-15s ", table1->columns[i].name);
+    }
+    for (int i = 0; i < table2->column_count; i++) {
+        printf("%-15s ", table2->columns[i].name);
+    }
+    printf("\n");
+    
+    for (int i = 0; i < table1->column_count + table2->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    
+    for (size_t r1 = 0; r1 < table1->row_count; r1++) {
+        void **row1 = (void**)table1->rows[r1];
+        int found = 0;
+        
+        for (size_t r2 = 0; r2 < table2->row_count; r2++) {
+            void **row2 = (void**)table2->rows[r2];
+            
+            int val1 = *(int*)row1[t1_col_idx];
+            int val2 = *(int*)row2[t2_col_idx];
+            
+            if (val1 == val2) {
+                for (int i = 0; i < table1->column_count; i++) {
+                    switch (table1->columns[i].type) {
+                        case TYPE_INTEGER:
+                            printf("%-15d ", *(int*)row1[i]);
+                            break;
+                        case TYPE_TEXT:
+                            printf("%-15s ", (char*)row1[i]);
+                            break;
+                        case TYPE_FLOAT:
+                            printf("%-15.2f ", *(double*)row1[i]);
+                            break;
+                    }
+                }
+                for (int i = 0; i < table2->column_count; i++) {
+                    switch (table2->columns[i].type) {
+                        case TYPE_INTEGER:
+                            printf("%-15d ", *(int*)row2[i]);
+                            break;
+                        case TYPE_TEXT:
+                            printf("%-15s ", (char*)row2[i]);
+                            break;
+                        case TYPE_FLOAT:
+                            printf("%-15.2f ", *(double*)row2[i]);
+                            break;
+                    }
+                }
+                printf("\n");
+                match_count++;
+                found = 1;
+            }
+        }
+        
+        if (!found) {
+            for (int i = 0; i < table1->column_count; i++) {
+                switch (table1->columns[i].type) {
+                    case TYPE_INTEGER:
+                        printf("%-15d ", *(int*)row1[i]);
+                        break;
+                    case TYPE_TEXT:
+                        printf("%-15s ", (char*)row1[i]);
+                        break;
+                    case TYPE_FLOAT:
+                        printf("%-15.2f ", *(double*)row1[i]);
+                        break;
+                }
+            }
+            for (int i = 0; i < table2->column_count; i++) {
+                printf("%-15s ", "NULL");
+            }
+            printf("\n");
+            match_count++;
+        }
+    }
+    
+    printf("(%d row%s)\n\n", match_count, match_count == 1 ? "" : "s");
+    return 0;
+}
+
 // ==================== VIEW HANDLERS ====================
 
 static int handle_create_view(TokenList *tokens) {
@@ -1101,6 +1263,78 @@ static int handle_change_password(TokenList *tokens) {
     return 0;
 }
 
+// ==================== PERMISSION HANDLERS ====================
+
+static int handle_grant(TokenList *tokens) {
+    if (tokens->count < 6) return -1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        printf("ERROR: Not logged in\n");
+        return -1;
+    }
+    
+    char permission_str[32];
+    char table_name[64];
+    char username[64];
+    
+    strcpy(permission_str, tokens->tokens[1]);
+    to_upper(permission_str);
+    strcpy(table_name, tokens->tokens[3]);
+    strcpy(username, tokens->tokens[5]);
+    
+    int perm_type = 0;
+    
+    if (strcmp(permission_str, "SELECT") == 0) perm_type = PERM_SELECT;
+    else if (strcmp(permission_str, "INSERT") == 0) perm_type = PERM_INSERT;
+    else if (strcmp(permission_str, "UPDATE") == 0) perm_type = PERM_UPDATE;
+    else if (strcmp(permission_str, "DELETE") == 0) perm_type = PERM_DELETE;
+    else if (strcmp(permission_str, "ALL") == 0) perm_type = PERM_ALL;
+    else {
+        printf("ERROR: Unknown permission '%s'\n", permission_str);
+        return -1;
+    }
+    
+    if (perm_grant(perm_system, username, table_name, perm_type) == 0) {
+        printf("OK. Granted %s on %s to %s\n", permission_str, table_name, username);
+    } else {
+        printf("ERROR: Failed to grant permission\n");
+    }
+    return 0;
+}
+
+static int handle_revoke(TokenList *tokens) {
+    if (tokens->count < 6) return -1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        printf("ERROR: Not logged in\n");
+        return -1;
+    }
+    
+    char permission_str[32];
+    char table_name[64];
+    char username[64];
+    
+    strcpy(permission_str, tokens->tokens[1]);
+    to_upper(permission_str);
+    strcpy(table_name, tokens->tokens[3]);
+    strcpy(username, tokens->tokens[5]);
+    
+    int perm_type = 0;
+    
+    if (strcmp(permission_str, "SELECT") == 0) perm_type = PERM_SELECT;
+    else if (strcmp(permission_str, "INSERT") == 0) perm_type = PERM_INSERT;
+    else if (strcmp(permission_str, "UPDATE") == 0) perm_type = PERM_UPDATE;
+    else if (strcmp(permission_str, "DELETE") == 0) perm_type = PERM_DELETE;
+    else if (strcmp(permission_str, "ALL") == 0) perm_type = PERM_ALL;
+    
+    if (perm_revoke(perm_system, username, table_name, perm_type) == 0) {
+        printf("OK. Revoked %s on %s from %s\n", permission_str, table_name, username);
+    } else {
+        printf("ERROR: Failed to revoke permission\n");
+    }
+    return 0;
+}
+
 // ==================== INIT/SHUTDOWN ====================
 
 void sql_init(void) {
@@ -1111,6 +1345,9 @@ void sql_init(void) {
         auth_system = auth_create();
         auth_load(auth_system);
         printf("Auth system loaded. %d user(s) registered.\n", auth_system->user_count);
+    }
+    if (!perm_system) {
+        perm_system = perm_create();
     }
     printf("HeavenDB SQL Engine initialized.\n");
 }
@@ -1130,6 +1367,10 @@ void sql_shutdown(void) {
         auth_save(auth_system);
         auth_destroy(auth_system);
         auth_system = NULL;
+    }
+    if (perm_system) {
+        perm_destroy(perm_system);
+        perm_system = NULL;
     }
 }
 
@@ -1191,20 +1432,34 @@ int sql_execute(const char *sql) {
     else if (strcmp(command, "CHANGE") == 0) {
         return handle_change_password(&list);
     }
+    else if (strcmp(command, "GRANT") == 0) {
+        return handle_grant(&list);
+    }
+    else if (strcmp(command, "REVOKE") == 0) {
+        return handle_revoke(&list);
+    }
     else if (strcmp(command, "INSERT") == 0) {
         return handle_insert(&list);
     }
     else if (strcmp(command, "SELECT") == 0) {
         int has_join = 0;
+        int is_left_join = 0;
         for (int i = 0; i < list.count; i++) {
             if (strcmp(list.tokens[i], "JOIN") == 0) {
                 has_join = 1;
+                if (i > 0 && strcmp(list.tokens[i-1], "LEFT") == 0) {
+                    is_left_join = 1;
+                }
                 break;
             }
         }
         
         if (has_join) {
-            return handle_join(&list);
+            if (is_left_join) {
+                return handle_left_join(&list);
+            } else {
+                return handle_join(&list);
+            }
         }
         
         if (!find_table(list.tokens[3])) {
