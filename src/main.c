@@ -6,6 +6,7 @@
 #include "hashmap.h"
 #include "sql.h"
 #include "tcp_server.h"
+#include "http_server.h"
 
 #define DB_FILE "heaven.hdb"
 
@@ -21,7 +22,7 @@ static void print_usage(void) {
     printf("  heavendb flush                   - Force write to disk\n");
     printf("  heavendb sql \"<SQL query>\"       - Execute SQL command\n");
     printf("  heavendb shell                   - Start interactive mode\n");
-    printf("  heavendb serve [port]            - Start TCP server\n");
+    printf("  heavendb serve [port]            - Start TCP + HTTP server\n");
     printf("  heavendb help                    - Show this help\n\n");
 }
 
@@ -139,7 +140,9 @@ int main(int argc, char *argv[]) {
         }
         
         sql_init();
+        http_server_start(HTTP_PORT);
         tcp_server_start(port);
+        http_server_stop();
         sql_shutdown();
         return 0;
     }

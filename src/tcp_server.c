@@ -1,5 +1,6 @@
 #include "tcp_server.h"
 #include "sql.h"
+#include "websocket.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,87 +13,140 @@
 static int server_running = 0;
 static SOCKET server_socket;
 
-// Thread function to handle a client
 DWORD WINAPI handle_client(LPVOID client_socket_ptr) {
     SOCKET client_socket = (SOCKET)client_socket_ptr;
     char buffer[BUFFER_SIZE];
     char line[BUFFER_SIZE];
     int line_pos = 0;
+    int is_websocket = 0;
     
-    // Send welcome message
-    char welcome[] = "Welcome to HeavenDB Server\nType SQL commands or 'exit' to disconnect.\n\n";
-    send(client_socket, welcome, (int)strlen(welcome), 0);
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+    
+    if (bytes_received <= 0) {
+        closesocket(client_socket);
+        return 0;
+    }
+    buffer[bytes_received] = '\0';
+    
+    printf("\n=== DEBUG: Raw Request ===\n");
+    printf("%s\n", buffer);
+    printf("=== END DEBUG ===\n\n");
+    
+    if (strstr(buffer, "Upgrade: websocket") || strstr(buffer, "Sec-WebSocket-Key")) {
+        printf("DEBUG: WebSocket handshake detected!\n");
+        int handshake_result = ws_handshake(client_socket, buffer);
+        printf("DEBUG: Handshake result = %d\n", handshake_result);
+        if (handshake_result == 0) {
+            printf("DEBUG: WebSocket handshake successful!\n");
+            is_websocket = 1;
+        } else {
+            printf("DEBUG: WebSocket handshake FAILED!\n");
+            closesocket(client_socket);
+            return 0;
+        }
+    } else {
+        printf("DEBUG: Regular TCP client detected\n");
+        char welcome[] = "Welcome to HeavenDB Server\nType SQL commands or 'exit' to disconnect.\n\n";
+        send(client_socket, welcome, (int)strlen(welcome), 0);
+    }
     
     while (1) {
         memset(buffer, 0, BUFFER_SIZE);
-        int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
         
-        if (bytes_received <= 0) {
-            break; // Client disconnected
-        }
+        if (bytes_received <= 0) break;
         
-        // Process each character received
-        for (int i = 0; i < bytes_received; i++) {
-            char c = buffer[i];
+        if (is_websocket) {
+            char payload[BUFFER_SIZE];
+            int payload_len = ws_parse_frame(buffer, bytes_received, payload, BUFFER_SIZE - 1);
             
-            if (c == '\n' || c == '\r') {
-                if (line_pos > 0) {
-                    line[line_pos] = '\0';
-                    
-                    if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
-                        char bye[] = "Bye!\n";
-                        send(client_socket, bye, (int)strlen(bye), 0);
-                        closesocket(client_socket);
-                        return 0;
-                    }
-                    
-                    if (strlen(line) > 0) {
-                        // Send prompt back to client
-                        char prompt[BUFFER_SIZE];
-                        snprintf(prompt, BUFFER_SIZE, "heavendb> %s\n", line);
-                        send(client_socket, prompt, (int)strlen(prompt), 0);
-                        
-                        // Redirect stdout to a pipe so we capture the output
-                        int pipe_fds[2];
-                        if (_pipe(pipe_fds, 65536, O_BINARY) == 0) {
-                            int old_stdout = _dup(1);
-                            _dup2(pipe_fds[1], 1);
-                            _close(pipe_fds[1]);
-                            
-                            // Execute the SQL command
-                            sql_execute(line);
-                            
-                            // Flush and restore stdout
-                            fflush(stdout);
-                            _dup2(old_stdout, 1);
-                            _close(old_stdout);
-                            
-                            // Read the captured output
-                            char output_buffer[8192];
-                            memset(output_buffer, 0, sizeof(output_buffer));
-                            int bytes_read = _read(pipe_fds[0], output_buffer, sizeof(output_buffer) - 1);
-                            _close(pipe_fds[0]);
-                            
-                            if (bytes_read > 0) {
-                                output_buffer[bytes_read] = '\0';
-                                send(client_socket, output_buffer, bytes_read, 0);
-                            }
-                        } else {
-                            // Fallback: just execute without capture
-                            sql_execute(line);
-                        }
-                    }
-                    
-                    line_pos = 0;
+            if (payload_len <= 0) break;
+            
+            payload[payload_len] = '\0';
+            
+            printf("DEBUG: WebSocket query: %s\n", payload);
+            
+            int pipe_fds[2];
+            if (_pipe(pipe_fds, 65536, O_BINARY) == 0) {
+                int old_stdout = _dup(1);
+                _dup2(pipe_fds[1], 1);
+                _close(pipe_fds[1]);
+                
+                sql_execute(payload);
+                
+                fflush(stdout);
+                _dup2(old_stdout, 1);
+                _close(old_stdout);
+                
+                char output_buffer[8192];
+                memset(output_buffer, 0, sizeof(output_buffer));
+                int bytes_read = _read(pipe_fds[0], output_buffer, sizeof(output_buffer) - 1);
+                _close(pipe_fds[0]);
+                
+                if (bytes_read > 0) {
+                    output_buffer[bytes_read] = '\0';
+                    char frame[BUFFER_SIZE + 16];
+                    int frame_len = ws_create_frame(output_buffer, bytes_read, frame, sizeof(frame));
+                    send(client_socket, frame, frame_len, 0);
                 }
-            } else {
-                if (line_pos < BUFFER_SIZE - 1) {
-                    line[line_pos++] = c;
+            }
+        } else {
+            for (int i = 0; i < bytes_received; i++) {
+                char c = buffer[i];
+                
+                if (c == '\n' || c == '\r') {
+                    if (line_pos > 0) {
+                        line[line_pos] = '\0';
+                        
+                        if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
+                            char bye[] = "Bye!\n";
+                            send(client_socket, bye, (int)strlen(bye), 0);
+                            closesocket(client_socket);
+                            return 0;
+                        }
+                        
+                        if (strlen(line) > 0) {
+                            char prompt[BUFFER_SIZE];
+                            snprintf(prompt, BUFFER_SIZE, "heavendb> %s\n", line);
+                            send(client_socket, prompt, (int)strlen(prompt), 0);
+                            
+                            int pipe_fds[2];
+                            if (_pipe(pipe_fds, 65536, O_BINARY) == 0) {
+                                int old_stdout = _dup(1);
+                                _dup2(pipe_fds[1], 1);
+                                _close(pipe_fds[1]);
+                                
+                                sql_execute(line);
+                                
+                                fflush(stdout);
+                                _dup2(old_stdout, 1);
+                                _close(old_stdout);
+                                
+                                char output_buffer[8192];
+                                memset(output_buffer, 0, sizeof(output_buffer));
+                                int bytes_read = _read(pipe_fds[0], output_buffer, sizeof(output_buffer) - 1);
+                                _close(pipe_fds[0]);
+                                
+                                if (bytes_read > 0) {
+                                    output_buffer[bytes_read] = '\0';
+                                    send(client_socket, output_buffer, bytes_read, 0);
+                                }
+                            }
+                        }
+                        
+                        line_pos = 0;
+                    }
+                } else {
+                    if (line_pos < BUFFER_SIZE - 1) {
+                        line[line_pos++] = c;
+                    }
                 }
             }
         }
     }
     
+    printf("DEBUG: Client disconnected\n");
     closesocket(client_socket);
     return 0;
 }
@@ -137,7 +191,9 @@ int tcp_server_start(int port) {
     
     server_running = 1;
     printf("HeavenDB Server listening on port %d\n", port);
-    printf("Connect using: telnet localhost %d\n\n", port);
+    printf("TCP clients: telnet localhost %d\n", port);
+    printf("WebSocket clients: ws://localhost:%d\n", port);
+    printf("Dashboard: http://localhost:8080\n\n");
     
     while (server_running) {
         struct sockaddr_in client_addr;
@@ -150,7 +206,7 @@ int tcp_server_start(int port) {
             continue;
         }
         
-        printf("Client connected!\n");
+        printf("\nClient connected!\n");
         
         HANDLE thread = CreateThread(NULL, 0, handle_client, (LPVOID)client_socket, 0, NULL);
         

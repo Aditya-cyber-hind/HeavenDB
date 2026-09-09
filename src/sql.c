@@ -9,6 +9,7 @@
 #include "auth.h"
 #include "auth_storage.h"
 #include "permissions.h"
+#include "replication.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -22,6 +23,7 @@ static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
+static ReplicationSystem *rep_system = NULL;
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -1350,6 +1352,9 @@ void sql_init(void) {
         perm_system = perm_create();
     }
     printf("HeavenDB SQL Engine initialized.\n");
+    if (!rep_system) {
+        rep_system = replication_create();
+    }
 }
 
 void sql_shutdown(void) {
@@ -1372,6 +1377,51 @@ void sql_shutdown(void) {
         perm_destroy(perm_system);
         perm_system = NULL;
     }
+    if (rep_system) {
+        replication_destroy(rep_system);
+        rep_system = NULL;
+    }
+}
+
+static int handle_replicate(TokenList *tokens) {
+    // REPLICATE TO 'host:port'
+    if (tokens->count < 3) return -1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        printf("ERROR: Not logged in\n");
+        return -1;
+    }
+    
+    char address[REPLICA_HOST_LEN];
+    strcpy(address, tokens->tokens[2]);
+    
+    // Parse host:port
+    char *colon = strchr(address, ':');
+    if (!colon) {
+        printf("ERROR: Invalid address format. Use 'host:port'\n");
+        return -1;
+    }
+    
+    *colon = '\0';
+    char *host = address;
+    int port = atoi(colon + 1);
+    
+    if (replication_add_replica(rep_system, host, port) == 0) {
+        printf("OK. Added replica %s:%d\n", host, port);
+    } else {
+        printf("ERROR: Failed to add replica\n");
+    }
+    return 0;
+}
+
+static int handle_sync(TokenList *tokens) {
+    if (rep_system && rep_system->replica_count > 0) {
+        replication_sync(rep_system, "SYNC\n");
+        printf("OK. Synced to %d replica(s)\n", rep_system->replica_count);
+    } else {
+        printf("ERROR: No replicas configured\n");
+    }
+    return 0;
 }
 
 int sql_execute(const char *sql) {
@@ -1473,6 +1523,12 @@ int sql_execute(const char *sql) {
     }
     else if (strcmp(command, "DELETE") == 0) {
         return handle_delete(&list);
+    }
+    else if (strcmp(command, "REPLICATE") == 0) {
+        return handle_replicate(&list);
+    }
+    else if (strcmp(command, "SYNC") == 0) {
+        return handle_sync(&list);
     }
     else {
         printf("ERROR: Unknown SQL command '%s'\n", command);
