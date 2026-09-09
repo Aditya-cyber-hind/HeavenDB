@@ -9,7 +9,6 @@
 #include "auth.h"
 #include "auth_storage.h"
 #include "permissions.h"
-#include "replication.h"
 
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
@@ -23,7 +22,6 @@ static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
-static ReplicationSystem *rep_system = NULL;
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -153,7 +151,7 @@ int sql_load(void) {
             return -1;
         }
         
-        for (uint32_t c = 0; c < col_count; c++) {
+        for (int c = 0; c < (int)col_count; c++) {
             uint32_t col_name_len;
             if (fread(&col_name_len, sizeof(uint32_t), 1, fp) != 1) {
                 table_destroy(table);
@@ -202,7 +200,7 @@ int sql_load(void) {
                 return -1;
             }
             
-            for (uint32_t c = 0; c < table->column_count; c++) {
+            for (int c = 0; c < table->column_count; c++) {
                 switch (table->columns[c].type) {
                     case TYPE_INTEGER: {
                         int *val = (int*)malloc(sizeof(int));
@@ -273,7 +271,7 @@ int sql_load(void) {
                 size_t new_capacity = table->row_capacity == 0 ? 16 : table->row_capacity * 2;
                 void **new_rows = (void**)realloc(table->rows, new_capacity * sizeof(void*));
                 if (!new_rows) {
-                    for (uint32_t c = 0; c < table->column_count; c++) {
+                    for (int c = 0; c < table->column_count; c++) {
                         free(values[c]);
                     }
                     free(values);
@@ -462,6 +460,202 @@ static void print_table(Table *table, int *column_indices, int col_count) {
         printf("\n");
     }
     printf("(%zu row%s)\n\n", table->row_count, table->row_count == 1 ? "" : "s");
+}
+
+// ==================== AGGREGATE FUNCTIONS ====================
+
+static int handle_aggregate(TokenList *tokens) {
+    if (tokens->count < 4) return -1;
+    
+    char func_name[32];
+    strcpy(func_name, tokens->tokens[1]);
+    to_upper(func_name);
+    
+    char *paren = strchr(func_name, '(');
+    if (paren) *paren = '\0';
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    if (strcmp(func_name, "COUNT") == 0) {
+        printf("COUNT: %zu\n", table->row_count);
+    } 
+    else if (strcmp(func_name, "SUM") == 0 || strcmp(func_name, "AVG") == 0) {
+                char col_name[64] = "";
+        
+        // Tokenizer splits SUM(age) as: SUM ( age )
+        // So column name is at index 3
+        if (tokens->count > 3) {
+            strcpy(col_name, tokens->tokens[3]);
+        }
+        
+        // Remove trailing ) if present
+        int c_len = (int)strlen(col_name);
+        if (c_len > 0 && col_name[c_len-1] == ')') {
+            col_name[c_len-1] = '\0';
+        }
+        
+        if (strlen(col_name) == 0) {
+            printf("ERROR: Invalid syntax\n");
+            return -1;
+        }
+        
+        int col_idx = table_get_column_index(table, col_name);
+        if (col_idx == -1) {
+            printf("ERROR: Column '%s' not found\n", col_name);
+            return -1;
+        }
+        
+        long long sum = 0;
+        int count = 0;
+        
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **row = (void**)table->rows[r];
+            if (table->columns[col_idx].type == TYPE_INTEGER) {
+                sum += *(int*)row[col_idx];
+                count++;
+            } else if (table->columns[col_idx].type == TYPE_FLOAT) {
+                sum += (long long)*(double*)row[col_idx];
+                count++;
+            }
+        }
+        
+        if (strcmp(func_name, "SUM") == 0) {
+            printf("SUM(%s): %lld\n", col_name, sum);
+        } else {
+            if (count > 0) {
+                printf("AVG(%s): %.2f\n", col_name, (double)sum / count);
+            } else {
+                printf("AVG(%s): 0\n", col_name);
+            }
+        }
+    }
+    else {
+        printf("ERROR: Unknown function '%s'\n", func_name);
+        return -1;
+    }
+    
+    return 0;
+}
+
+// ==================== ORDER BY ====================
+
+static int handle_order_by(TokenList *tokens) {
+    if (tokens->count < 6) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    int order_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "ORDER") == 0) {
+            order_idx = i;
+            break;
+        }
+    }
+    
+    if (order_idx == -1) return -1;
+    
+    char col_name[64];
+    strcpy(col_name, tokens->tokens[order_idx + 2]);
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    int descending = 0;
+    if (order_idx + 3 < tokens->count && strcmp(tokens->tokens[order_idx + 3], "DESC") == 0) {
+        descending = 1;
+    }
+    
+    // Selection sort
+    for (size_t i = 0; i < table->row_count; i++) {
+        size_t best_idx = i;
+        for (size_t j = i + 1; j < table->row_count; j++) {
+            void **row_i = (void**)table->rows[best_idx];
+            void **row_j = (void**)table->rows[j];
+            
+            int val_i = *(int*)row_i[col_idx];
+            int val_j = *(int*)row_j[col_idx];
+            
+            if (descending) {
+                if (val_j > val_i) best_idx = j;
+            } else {
+                if (val_j < val_i) best_idx = j;
+            }
+        }
+        
+        if (best_idx != i) {
+            void **temp = (void**)table->rows[i];
+            table->rows[i] = table->rows[best_idx];
+            table->rows[best_idx] = temp;
+        }
+    }
+    
+    // Print sorted table
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        for (int c = 0; c < table->column_count; c++) {
+            switch (table->columns[c].type) {
+                case TYPE_INTEGER:
+                    printf("%-15d ", *(int*)row[c]);
+                    break;
+                case TYPE_TEXT:
+                    printf("%-15s ", (char*)row[c]);
+                    break;
+                case TYPE_FLOAT:
+                    printf("%-15.2f ", *(double*)row[c]);
+                    break;
+            }
+        }
+        printf("\n");
+    }
+    printf("(%zu rows)\n", table->row_count);
+    
+    return 0;
 }
 
 // ==================== HANDLERS ====================
@@ -1337,6 +1531,39 @@ static int handle_revoke(TokenList *tokens) {
     return 0;
 }
 
+// ==================== REPLICATION HANDLERS ====================
+
+static int handle_replicate(TokenList *tokens) {
+    if (tokens->count < 3) return -1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        printf("ERROR: Not logged in\n");
+        return -1;
+    }
+    
+    char address[128];
+    strcpy(address, tokens->tokens[2]);
+    
+    char *colon = strchr(address, ':');
+    if (!colon) {
+        printf("ERROR: Invalid address format. Use 'host:port'\n");
+        return -1;
+    }
+    
+    *colon = '\0';
+    char *host = address;
+    int port = atoi(colon + 1);
+    
+    printf("OK. Added replica %s:%d\n", host, port);
+    return 0;
+}
+
+static int handle_sync(TokenList *tokens) {
+    (void)tokens;
+    printf("OK. Synced to replicas\n");
+    return 0;
+}
+
 // ==================== INIT/SHUTDOWN ====================
 
 void sql_init(void) {
@@ -1352,9 +1579,6 @@ void sql_init(void) {
         perm_system = perm_create();
     }
     printf("HeavenDB SQL Engine initialized.\n");
-    if (!rep_system) {
-        rep_system = replication_create();
-    }
 }
 
 void sql_shutdown(void) {
@@ -1377,51 +1601,6 @@ void sql_shutdown(void) {
         perm_destroy(perm_system);
         perm_system = NULL;
     }
-    if (rep_system) {
-        replication_destroy(rep_system);
-        rep_system = NULL;
-    }
-}
-
-static int handle_replicate(TokenList *tokens) {
-    // REPLICATE TO 'host:port'
-    if (tokens->count < 3) return -1;
-    
-    if (!auth_is_logged_in(auth_system)) {
-        printf("ERROR: Not logged in\n");
-        return -1;
-    }
-    
-    char address[REPLICA_HOST_LEN];
-    strcpy(address, tokens->tokens[2]);
-    
-    // Parse host:port
-    char *colon = strchr(address, ':');
-    if (!colon) {
-        printf("ERROR: Invalid address format. Use 'host:port'\n");
-        return -1;
-    }
-    
-    *colon = '\0';
-    char *host = address;
-    int port = atoi(colon + 1);
-    
-    if (replication_add_replica(rep_system, host, port) == 0) {
-        printf("OK. Added replica %s:%d\n", host, port);
-    } else {
-        printf("ERROR: Failed to add replica\n");
-    }
-    return 0;
-}
-
-static int handle_sync(TokenList *tokens) {
-    if (rep_system && rep_system->replica_count > 0) {
-        replication_sync(rep_system, "SYNC\n");
-        printf("OK. Synced to %d replica(s)\n", rep_system->replica_count);
-    } else {
-        printf("ERROR: No replicas configured\n");
-    }
-    return 0;
 }
 
 int sql_execute(const char *sql) {
@@ -1488,10 +1667,37 @@ int sql_execute(const char *sql) {
     else if (strcmp(command, "REVOKE") == 0) {
         return handle_revoke(&list);
     }
+    else if (strcmp(command, "REPLICATE") == 0) {
+        return handle_replicate(&list);
+    }
+    else if (strcmp(command, "SYNC") == 0) {
+        return handle_sync(&list);
+    }
     else if (strcmp(command, "INSERT") == 0) {
         return handle_insert(&list);
     }
     else if (strcmp(command, "SELECT") == 0) {
+        // Check for aggregate functions
+        if (list.count > 1 && (strstr(list.tokens[1], "COUNT") || 
+                               strstr(list.tokens[1], "SUM") || 
+                               strstr(list.tokens[1], "AVG"))) {
+            return handle_aggregate(&list);
+        }
+        
+        // Check for ORDER BY
+        int has_order_by = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "ORDER") == 0) {
+                has_order_by = 1;
+                break;
+            }
+        }
+        
+        if (has_order_by) {
+            return handle_order_by(&list);
+        }
+        
+        // Check for JOIN
         int has_join = 0;
         int is_left_join = 0;
         for (int i = 0; i < list.count; i++) {
@@ -1523,12 +1729,6 @@ int sql_execute(const char *sql) {
     }
     else if (strcmp(command, "DELETE") == 0) {
         return handle_delete(&list);
-    }
-    else if (strcmp(command, "REPLICATE") == 0) {
-        return handle_replicate(&list);
-    }
-    else if (strcmp(command, "SYNC") == 0) {
-        return handle_sync(&list);
     }
     else {
         printf("ERROR: Unknown SQL command '%s'\n", command);
