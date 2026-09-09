@@ -1603,6 +1603,554 @@ void sql_shutdown(void) {
     }
 }
 
+// ==================== DROP TABLE ====================
+
+static int handle_drop_table(TokenList *tokens) {
+    // DROP TABLE users
+    if (tokens->count < 3) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[2]);
+    
+    for (int i = 0; i < table_count; i++) {
+        if (strcmp(tables[i]->name, table_name) == 0) {
+            table_destroy(tables[i]);
+            for (int j = i; j < table_count - 1; j++) {
+                tables[j] = tables[j + 1];
+            }
+            table_count--;
+            sql_save();
+            printf("OK. Dropped table '%s'\n", table_name);
+            return 0;
+        }
+    }
+    
+    printf("ERROR: Table '%s' not found\n", table_name);
+    return -1;
+}
+
+// ==================== ALTER TABLE ====================
+
+static int handle_alter_table(TokenList *tokens) {
+    // ALTER TABLE users ADD COLUMN email TEXT
+    // ALTER TABLE users DROP COLUMN age
+    if (tokens->count < 5) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[2]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    if (strcmp(tokens->tokens[3], "ADD") == 0) {
+        // ADD COLUMN name type
+        if (tokens->count < 6) return -1;
+        
+        char col_name[64];
+        char col_type[32];
+        
+        strcpy(col_name, tokens->tokens[5]);
+        strcpy(col_type, tokens->tokens[6]);
+        to_upper(col_type);
+        
+        ColumnType type;
+        if (strcmp(col_type, "INTEGER") == 0 || strcmp(col_type, "INT") == 0) {
+            type = TYPE_INTEGER;
+        } else if (strcmp(col_type, "TEXT") == 0 || strcmp(col_type, "STRING") == 0) {
+            type = TYPE_TEXT;
+        } else if (strcmp(col_type, "FLOAT") == 0 || strcmp(col_type, "DOUBLE") == 0) {
+            type = TYPE_FLOAT;
+        } else {
+            printf("ERROR: Unknown type '%s'\n", col_type);
+            return -1;
+        }
+        
+        if (table_add_column(table, col_name, type) == 0) {
+            sql_save();
+            printf("OK. Added column '%s'\n", col_name);
+        }
+    }
+    else if (strcmp(tokens->tokens[3], "DROP") == 0) {
+        // DROP COLUMN name
+        if (tokens->count < 5) return -1;
+        
+        char col_name[64];
+        strcpy(col_name, tokens->tokens[5]);
+        
+        int col_idx = table_get_column_index(table, col_name);
+        if (col_idx == -1) {
+            printf("ERROR: Column '%s' not found\n", col_name);
+            return -1;
+        }
+        
+        // Shift columns
+        for (int c = col_idx; c < table->column_count - 1; c++) {
+            table->columns[c] = table->columns[c + 1];
+        }
+        table->column_count--;
+        sql_save();
+        printf("OK. Dropped column '%s'\n", col_name);
+    }
+    else {
+        printf("ERROR: Expected ADD or DROP\n");
+        return -1;
+    }
+    
+    return 0;
+}
+
+// ==================== GROUP BY ====================
+
+static int handle_group_by(TokenList *tokens) {
+    // SELECT age, COUNT(*) FROM users GROUP BY age
+    if (tokens->count < 6) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    int group_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "GROUP") == 0) {
+            group_idx = i;
+            break;
+        }
+    }
+    
+    if (group_idx == -1) return -1;
+    
+    char group_col[64];
+    strcpy(group_col, tokens->tokens[group_idx + 2]);
+    
+    int col_idx = table_get_column_index(table, group_col);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", group_col);
+        return -1;
+    }
+    
+    // For simplicity, just show distinct values and counts
+    printf("%-15s %-10s\n", group_col, "COUNT");
+    printf("%-15s %-10s\n", "---", "---");
+    
+    for (size_t i = 0; i < table->row_count; i++) {
+        void **row = (void**)table->rows[i];
+        int val = *(int*)row[col_idx];
+        
+        // Count how many times this value appears
+        int count = 0;
+        int already_counted = 0;
+        
+        for (size_t j = 0; j < i; j++) {
+            void **prev_row = (void**)table->rows[j];
+            if (*(int*)prev_row[col_idx] == val) {
+                already_counted = 1;
+                break;
+            }
+        }
+        
+        if (!already_counted) {
+            for (size_t j = i; j < table->row_count; j++) {
+                void **check_row = (void**)table->rows[j];
+                if (*(int*)check_row[col_idx] == val) {
+                    count++;
+                }
+            }
+            printf("%-15d %-10d\n", val, count);
+        }
+    }
+    
+    return 0;
+}
+
+// ==================== LIMIT ====================
+
+static int handle_limit(TokenList *tokens) {
+    // SELECT * FROM users LIMIT 5
+    if (tokens->count < 5) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    int limit_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "LIMIT") == 0) {
+            limit_idx = i;
+            break;
+        }
+    }
+    
+    if (limit_idx == -1) return -1;
+    
+    int limit = atoi(tokens->tokens[limit_idx + 1]);
+    
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    size_t print_count = (size_t)limit < table->row_count ? (size_t)limit : table->row_count;
+    
+    for (size_t r = 0; r < print_count; r++) {
+        void **row = (void**)table->rows[r];
+        for (int c = 0; c < table->column_count; c++) {
+            switch (table->columns[c].type) {
+                case TYPE_INTEGER:
+                    printf("%-15d ", *(int*)row[c]);
+                    break;
+                case TYPE_TEXT:
+                    printf("%-15s ", (char*)row[c]);
+                    break;
+                case TYPE_FLOAT:
+                    printf("%-15.2f ", *(double*)row[c]);
+                    break;
+            }
+        }
+        printf("\n");
+    }
+    printf("(%zu rows)\n", print_count);
+    
+    return 0;
+}
+
+// ==================== DISTINCT ====================
+
+static int handle_distinct(TokenList *tokens) {
+    // SELECT DISTINCT age FROM users
+    if (tokens->count < 5) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char col_name[64];
+    strcpy(col_name, tokens->tokens[2]);
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    printf("%-15s\n", col_name);
+    printf("%-15s\n", "---");
+    
+    for (size_t i = 0; i < table->row_count; i++) {
+        void **row = (void**)table->rows[i];
+        int val = *(int*)row[col_idx];
+        
+        int seen = 0;
+        for (size_t j = 0; j < i; j++) {
+            void **prev = (void**)table->rows[j];
+            if (*(int*)prev[col_idx] == val) {
+                seen = 1;
+                break;
+            }
+        }
+        
+        if (!seen) {
+            printf("%-15d\n", val);
+        }
+    }
+    
+    return 0;
+}
+
+// ==================== MIN/MAX ====================
+
+static int handle_min_max(TokenList *tokens) {
+    // SELECT MIN(age) FROM users
+    // SELECT MAX(age) FROM users
+    if (tokens->count < 4) return -1;
+    
+    char func_name[32];
+    strcpy(func_name, tokens->tokens[1]);
+    to_upper(func_name);
+    
+    char *paren = strchr(func_name, '(');
+    if (paren) *paren = '\0';
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char col_name[64] = "";
+    if (tokens->count > 3) {
+        strcpy(col_name, tokens->tokens[3]);
+    }
+    
+    int c_len = (int)strlen(col_name);
+    if (c_len > 0 && col_name[c_len-1] == ')') {
+        col_name[c_len-1] = '\0';
+    }
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    int result = 0;
+    int first = 1;
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        if (table->columns[col_idx].type == TYPE_INTEGER) {
+            int val = *(int*)row[col_idx];
+            if (first) {
+                result = val;
+                first = 0;
+            } else if (strcmp(func_name, "MIN") == 0 && val < result) {
+                result = val;
+            } else if (strcmp(func_name, "MAX") == 0 && val > result) {
+                result = val;
+            }
+        }
+    }
+    
+    printf("%s(%s): %d\n", func_name, col_name, result);
+    return 0;
+}
+
+// ==================== LIKE ====================
+
+static int handle_like(TokenList *tokens) {
+    // SELECT * FROM users WHERE name LIKE 'Adi%'
+    if (tokens->count < 6) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char col_name[64];
+    char pattern[128];
+    
+    strcpy(col_name, tokens->tokens[from_idx + 3]);
+    strcpy(pattern, tokens->tokens[from_idx + 5]);
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    // Pattern matching: % = wildcard, _ = single char
+    // Convert LIKE pattern to simple prefix match for now
+    int is_prefix = 0;
+    char prefix[128] = "";
+    
+    if (pattern[strlen(pattern)-1] == '%') {
+        is_prefix = 1;
+        strncpy(prefix, pattern, strlen(pattern) - 1);
+        prefix[strlen(pattern)-1] = '\0';
+    }
+    
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        
+        int matches = 0;
+        if (table->columns[col_idx].type == TYPE_TEXT) {
+            char *val = (char*)row[col_idx];
+            if (is_prefix) {
+                if (strncmp(val, prefix, strlen(prefix)) == 0) matches = 1;
+            } else {
+                if (strcmp(val, pattern) == 0) matches = 1;
+            }
+        }
+        
+        if (matches) {
+            for (int c = 0; c < table->column_count; c++) {
+                switch (table->columns[c].type) {
+                    case TYPE_INTEGER:
+                        printf("%-15d ", *(int*)row[c]);
+                        break;
+                    case TYPE_TEXT:
+                        printf("%-15s ", (char*)row[c]);
+                        break;
+                    case TYPE_FLOAT:
+                        printf("%-15.2f ", *(double*)row[c]);
+                        break;
+                }
+            }
+            printf("\n");
+            match_count++;
+        }
+    }
+    printf("(%d rows)\n", match_count);
+    
+    return 0;
+}
+
+// ==================== BETWEEN ====================
+
+static int handle_between(TokenList *tokens) {
+    // SELECT * FROM users WHERE age BETWEEN 20 AND 30
+    if (tokens->count < 8) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char col_name[64];
+    strcpy(col_name, tokens->tokens[from_idx + 3]);
+    
+    int low = atoi(tokens->tokens[from_idx + 5]);
+    int high = atoi(tokens->tokens[from_idx + 7]);
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        
+        if (table->columns[col_idx].type == TYPE_INTEGER) {
+            int val = *(int*)row[col_idx];
+            if (val >= low && val <= high) {
+                for (int c = 0; c < table->column_count; c++) {
+                    switch (table->columns[c].type) {
+                        case TYPE_INTEGER:
+                            printf("%-15d ", *(int*)row[c]);
+                            break;
+                        case TYPE_TEXT:
+                            printf("%-15s ", (char*)row[c]);
+                            break;
+                        case TYPE_FLOAT:
+                            printf("%-15.2f ", *(double*)row[c]);
+                            break;
+                    }
+                }
+                printf("\n");
+                match_count++;
+            }
+        }
+    }
+    printf("(%d rows)\n", match_count);
+    
+    return 0;
+}
+
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -1652,6 +2200,12 @@ int sql_execute(const char *sql) {
             return handle_create_view(&list);
         }
     }
+    else if (strcmp(command, "DROP") == 0) {
+        return handle_drop_table(&list);
+    }
+    else if (strcmp(command, "ALTER") == 0) {
+        return handle_alter_table(&list);
+    }
     else if (strcmp(command, "LOGIN") == 0) {
         return handle_login(&list);
     }
@@ -1677,11 +2231,70 @@ int sql_execute(const char *sql) {
         return handle_insert(&list);
     }
     else if (strcmp(command, "SELECT") == 0) {
-        // Check for aggregate functions
+        // Check for aggregate functions (COUNT, SUM, AVG)
         if (list.count > 1 && (strstr(list.tokens[1], "COUNT") || 
                                strstr(list.tokens[1], "SUM") || 
                                strstr(list.tokens[1], "AVG"))) {
             return handle_aggregate(&list);
+        }
+        
+        // Check for MIN/MAX
+        if (list.count > 1 && (strstr(list.tokens[1], "MIN") || 
+                               strstr(list.tokens[1], "MAX"))) {
+            return handle_min_max(&list);
+        }
+        
+        // Check for DISTINCT
+        if (list.count > 2 && strcmp(list.tokens[1], "DISTINCT") == 0) {
+            return handle_distinct(&list);
+        }
+        
+        // Check for BETWEEN
+        int has_between = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "BETWEEN") == 0) {
+                has_between = 1;
+                break;
+            }
+        }
+        if (has_between) {
+            return handle_between(&list);
+        }
+        
+        // Check for LIKE
+        int has_like = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "LIKE") == 0) {
+                has_like = 1;
+                break;
+            }
+        }
+        if (has_like) {
+            return handle_like(&list);
+        }
+        
+        // Check for LIMIT
+        int has_limit = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "LIMIT") == 0) {
+                has_limit = 1;
+                break;
+            }
+        }
+        if (has_limit) {
+            return handle_limit(&list);
+        }
+        
+        // Check for GROUP BY
+        int has_group = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "GROUP") == 0) {
+                has_group = 1;
+                break;
+            }
+        }
+        if (has_group) {
+            return handle_group_by(&list);
         }
         
         // Check for ORDER BY
@@ -1692,7 +2305,6 @@ int sql_execute(const char *sql) {
                 break;
             }
         }
-        
         if (has_order_by) {
             return handle_order_by(&list);
         }
