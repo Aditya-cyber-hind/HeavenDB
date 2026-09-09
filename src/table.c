@@ -14,9 +14,13 @@ Table *table_create(const char *name) {
     table->row_count = 0;
     table->row_capacity = 0;
     
-    // Initialize all column indexes to NULL
     for (int i = 0; i < MAX_COLUMNS; i++) {
         table->columns[i].index = NULL;
+        table->columns[i].is_primary_key = 0;
+        table->columns[i].is_unique = 0;
+        table->columns[i].is_not_null = 0;
+        table->columns[i].is_auto_increment = 0;
+        table->columns[i].next_auto_value = 1;
     }
     
     return table;
@@ -29,8 +33,12 @@ int table_add_column(Table *table, const char *name, ColumnType type) {
     strncpy(col->name, name, 63);
     col->name[63] = '\0';
     col->type = type;
+    col->is_primary_key = 0;
+    col->is_unique = 0;
+    col->is_not_null = 0;
+    col->is_auto_increment = 0;
+    col->next_auto_value = 1;
     
-    // Create B-Tree index for INTEGER columns
     if (type == TYPE_INTEGER) {
         col->index = btree_create();
         if (!col->index) return -1;
@@ -50,7 +58,6 @@ BTree *table_get_index(Table *table, int column_index) {
 int table_insert(Table *table, void **values) {
     if (!table || !values) return -1;
     
-    // Allocate memory for a new row
     if (table->row_count >= table->row_capacity) {
         size_t new_capacity = table->row_capacity == 0 ? 16 : table->row_capacity * 2;
         void **new_rows = (void**)realloc(table->rows, new_capacity * sizeof(void*));
@@ -59,7 +66,6 @@ int table_insert(Table *table, void **values) {
         table->row_capacity = new_capacity;
     }
     
-    // Allocate and copy the row data
     void **row = (void**)malloc(table->column_count * sizeof(void*));
     if (!row) return -1;
     
@@ -87,11 +93,59 @@ int table_insert(Table *table, void **values) {
         }
     }
     
-    // Store the row
+    // Check NOT NULL constraints
+    for (int i = 0; i < table->column_count; i++) {
+        if (table->columns[i].is_not_null) {
+            if (table->columns[i].type == TYPE_TEXT) {
+                char *str = (char*)row[i];
+                if (str && strlen(str) == 0) {
+                    printf("ERROR: Column '%s' cannot be NULL\n", table->columns[i].name);
+                    for (int j = 0; j < table->column_count; j++) free(row[j]);
+                    free(row);
+                    return -1;
+                }
+            }
+        }
+    }
+    
+    // Check UNIQUE constraints
+    for (int i = 0; i < table->column_count; i++) {
+        if (table->columns[i].is_unique) {
+            for (size_t r = 0; r < table->row_count; r++) {
+                void **existing = (void**)table->rows[r];
+                if (table->columns[i].type == TYPE_INTEGER) {
+                    if (*(int*)existing[i] == *(int*)row[i]) {
+                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
+                        for (int j = 0; j < table->column_count; j++) free(row[j]);
+                        free(row);
+                        return -1;
+                    }
+                } else if (table->columns[i].type == TYPE_TEXT) {
+                    if (strcmp((char*)existing[i], (char*)row[i]) == 0) {
+                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
+                        for (int j = 0; j < table->column_count; j++) free(row[j]);
+                        free(row);
+                        return -1;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update auto-increment counters
+    for (int i = 0; i < table->column_count; i++) {
+        if (table->columns[i].is_auto_increment && table->columns[i].type == TYPE_INTEGER) {
+            int val = *(int*)row[i];
+            if (val >= table->columns[i].next_auto_value) {
+                table->columns[i].next_auto_value = val + 1;
+            }
+        }
+    }
+    
     table->rows[table->row_count] = row;
     table->row_count++;
     
-    // Add to B-Tree indexes for INTEGER columns
+    // Add to B-Tree indexes
     for (int i = 0; i < table->column_count; i++) {
         if (table->columns[i].type == TYPE_INTEGER && table->columns[i].index) {
             int key = *(int*)row[i];
@@ -124,7 +178,6 @@ void table_destroy(Table *table) {
         free(row);
     }
     
-    // Free B-Tree indexes
     for (int i = 0; i < table->column_count; i++) {
         if (table->columns[i].index) {
             btree_destroy(table->columns[i].index);

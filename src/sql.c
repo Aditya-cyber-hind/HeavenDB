@@ -698,7 +698,44 @@ static int handle_create_table(TokenList *tokens) {
         }
         
         table_add_column(table, col_name, type);
+        
+        int col_index = table->column_count - 1;
         i += 2;
+        
+        // Parse constraints
+        while (i < tokens->count && strcmp(tokens->tokens[i], ")") != 0 && 
+               strcmp(tokens->tokens[i], ",") != 0) {
+            
+            char constraint[32];
+            strcpy(constraint, tokens->tokens[i]);
+            to_upper(constraint);
+            
+            if (strcmp(constraint, "PRIMARY") == 0) {
+                table->columns[col_index].is_primary_key = 1;
+                table->columns[col_index].is_unique = 1;
+                table->columns[col_index].is_not_null = 1;
+                i += 2; // Skip KEY
+            }
+            else if (strcmp(constraint, "UNIQUE") == 0) {
+                table->columns[col_index].is_unique = 1;
+                i++;
+            }
+            else if (strcmp(constraint, "NOT") == 0) {
+                table->columns[col_index].is_not_null = 1;
+                i += 2; // Skip NULL
+            }
+            else if (strcmp(constraint, "AUTO_INCREMENT") == 0) {
+                table->columns[col_index].is_auto_increment = 1;
+                table->columns[col_index].is_unique = 1;
+                i++;
+            }
+            else if (strcmp(constraint, "REFERENCES") == 0) {
+                i += 2; // Skip table name for now
+            }
+            else {
+                i++;
+            }
+        }
         
         if (i < tokens->count && strcmp(tokens->tokens[i], ",") == 0) {
             i++;
@@ -739,10 +776,19 @@ static int handle_insert(TokenList *tokens) {
         switch (table->columns[col_idx].type) {
             case TYPE_INTEGER: {
                 int *val = (int*)malloc(sizeof(int));
-                *val = atoi(tokens->tokens[i]);
+                if (table->columns[col_idx].is_auto_increment && 
+                    strcmp(tokens->tokens[i], "NULL") == 0) {
+                    *val = table->columns[col_idx].next_auto_value++;
+                } else {
+                    *val = atoi(tokens->tokens[i]);
+                    if (table->columns[col_idx].is_auto_increment && 
+                        *val >= table->columns[col_idx].next_auto_value) {
+                        table->columns[col_idx].next_auto_value = *val + 1;
+                    }
+                }
                 values[col_idx] = val;
                 break;
-            }
+            }            
             case TYPE_TEXT: {
                 char *str = (char*)malloc(strlen(tokens->tokens[i]) + 1);
                 strcpy(str, tokens->tokens[i]);

@@ -17,14 +17,19 @@ typedef enum {
 typedef struct {
     char name[64];
     ColumnType type;
-    BTree *index; // B-Tree index for INTEGER columns (NULL for others)
+    BTree *index;
+    int is_primary_key;
+    int is_unique;
+    int is_not_null;
+    int is_auto_increment;
+    int next_auto_value;
 } Column;
 
 typedef struct {
     char name[MAX_TABLE_NAME];
     Column columns[MAX_COLUMNS];
     int column_count;
-    void **rows; // Array of pointers to row data
+    void **rows;
     size_t row_count;
     size_t row_capacity;
 } Table;
