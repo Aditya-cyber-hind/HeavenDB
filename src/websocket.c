@@ -4,7 +4,6 @@
 #include <string.h>
 #include <ctype.h>
 
-// Pure C SHA1 implementation
 typedef struct {
     unsigned int state[5];
     unsigned int count[2];
@@ -107,7 +106,6 @@ static void real_sha1(const char *input, int input_len, unsigned char *output) {
     sha1_final(&ctx, output);
 }
 
-// Base64 encoding
 static void base64_encode(const unsigned char *input, int input_len, char *output) {
     static const char *chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     int i, j = 0;
@@ -135,6 +133,8 @@ static void base64_encode(const unsigned char *input, int input_len, char *outpu
 }
 
 int ws_handshake(SOCKET client_socket, const char *request) {
+    (void)client_socket;
+    
     const char *key_start = strstr(request, "Sec-WebSocket-Key: ");
     if (!key_start) return -1;
     
@@ -164,16 +164,15 @@ int ws_handshake(SOCKET client_socket, const char *request) {
     char accept_key[64];
     base64_encode(sha1_result, 20, accept_key);
     
-    printf("DEBUG: Key = '%s'\n", key);
-    printf("DEBUG: Accept = '%s'\n", accept_key);
-    
     char response[512];
     snprintf(response, sizeof(response),
         "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
         "Sec-WebSocket-Accept: %s\r\n"
-        "\r\n", accept_key);    
+        "\r\n", accept_key);
+    
+    send(client_socket, response, (int)strlen(response), 0);
     return 0;
 }
 

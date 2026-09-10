@@ -29,24 +29,15 @@ DWORD WINAPI handle_client(LPVOID client_socket_ptr) {
     }
     buffer[bytes_received] = '\0';
     
-    printf("\n=== DEBUG: Raw Request ===\n");
-    printf("%s\n", buffer);
-    printf("=== END DEBUG ===\n\n");
-    
     if (strstr(buffer, "Upgrade: websocket") || strstr(buffer, "Sec-WebSocket-Key")) {
-        printf("DEBUG: WebSocket handshake detected!\n");
         int handshake_result = ws_handshake(client_socket, buffer);
-        printf("DEBUG: Handshake result = %d\n", handshake_result);
         if (handshake_result == 0) {
-            printf("DEBUG: WebSocket handshake successful!\n");
             is_websocket = 1;
         } else {
-            printf("DEBUG: WebSocket handshake FAILED!\n");
             closesocket(client_socket);
             return 0;
         }
     } else {
-        printf("DEBUG: Regular TCP client detected\n");
         char welcome[] = "Welcome to HeavenDB Server\nType SQL commands or 'exit' to disconnect.\n\n";
         send(client_socket, welcome, (int)strlen(welcome), 0);
     }
@@ -64,8 +55,6 @@ DWORD WINAPI handle_client(LPVOID client_socket_ptr) {
             if (payload_len <= 0) break;
             
             payload[payload_len] = '\0';
-            
-            printf("DEBUG: WebSocket query: %s\n", payload);
             
             int pipe_fds[2];
             if (_pipe(pipe_fds, 65536, O_BINARY) == 0) {
@@ -108,7 +97,7 @@ DWORD WINAPI handle_client(LPVOID client_socket_ptr) {
                         
                         if (strlen(line) > 0) {
                             char prompt[BUFFER_SIZE];
-                            snprintf(prompt, BUFFER_SIZE, "heavendb> %s\n", line);
+                            snprintf(prompt, BUFFER_SIZE, "heavendb> %.4000s\n", line);
                             send(client_socket, prompt, (int)strlen(prompt), 0);
                             
                             int pipe_fds[2];
@@ -146,7 +135,6 @@ DWORD WINAPI handle_client(LPVOID client_socket_ptr) {
         }
     }
     
-    printf("DEBUG: Client disconnected\n");
     closesocket(client_socket);
     return 0;
 }
@@ -192,7 +180,6 @@ int tcp_server_start(int port) {
     server_running = 1;
     printf("HeavenDB Server listening on port %d\n", port);
     printf("TCP clients: telnet localhost %d\n", port);
-    printf("WebSocket clients: ws://localhost:%d\n", port);
     printf("Dashboard: http://localhost:8080\n\n");
     
     while (server_running) {
@@ -206,7 +193,7 @@ int tcp_server_start(int port) {
             continue;
         }
         
-        printf("\nClient connected!\n");
+        printf("Client connected!\n");
         
         HANDLE thread = CreateThread(NULL, 0, handle_client, (LPVOID)client_socket, 0, NULL);
         
