@@ -10,6 +10,22 @@
 #include "auth_storage.h"
 #include "permissions.h"
 
+static void generate_uuid(char *output) {
+    unsigned char bytes[16];
+    for (int i = 0; i < 16; i++) {
+        bytes[i] = (unsigned char)(rand() % 256);
+    }
+    bytes[6] = (bytes[6] & 0x0F) | 0x40;
+    bytes[8] = (bytes[8] & 0x3F) | 0x80;
+    
+    sprintf(output, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5],
+        bytes[6], bytes[7],
+        bytes[8], bytes[9],
+        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+}
+
 #define MAX_TABLES 128
 #define MAX_TOKENS 64
 #define MAX_TOKEN_LEN 128
@@ -86,7 +102,9 @@ int sql_save(void) {
                         fwrite(&val, sizeof(int), 1, fp);
                         break;
                     }
-                    case TYPE_TEXT: {
+                    case TYPE_TEXT:
+                    case TYPE_UUID:
+                    case TYPE_JSON: {
                         char *str = (char*)row[c];
                         uint32_t str_len = (uint32_t)strlen(str);
                         fwrite(&str_len, sizeof(uint32_t), 1, fp);
@@ -230,7 +248,9 @@ int sql_load(void) {
                         values[c] = val;
                         break;
                     }
-                    case TYPE_TEXT: {
+                    case TYPE_TEXT:
+                    case TYPE_UUID:
+                    case TYPE_JSON: {
                         uint32_t str_len;
                         if (fread(&str_len, sizeof(uint32_t), 1, fp) != 1) {
                             free(values);
@@ -472,6 +492,12 @@ static void print_table(Table *table, int *column_indices, int col_count) {
                     break;
                 case TYPE_TEXT:
                     printf("%-15s ", (char*)row[idx]);
+                    break;
+                case TYPE_UUID:
+                    printf("%-38s ", (char*)row[idx]);
+                    break;
+                case TYPE_JSON:
+                    printf("%-30s ", (char*)row[idx]);
                     break;
                 case TYPE_FLOAT:
                     printf("%-15.2f ", *(double*)row[idx]);
@@ -1212,7 +1238,6 @@ static int handle_explain(TokenList *tokens) {
 }
 
 // ==================== CREATE TABLE ====================
-
 static int handle_create_table(TokenList *tokens) {
     if (tokens->count < 5) return -1;
     
@@ -1242,6 +1267,10 @@ static int handle_create_table(TokenList *tokens) {
             type = TYPE_INTEGER;
         } else if (strcmp(col_type, "TEXT") == 0 || strcmp(col_type, "STRING") == 0) {
             type = TYPE_TEXT;
+        } else if (strcmp(col_type, "UUID") == 0) {
+            type = TYPE_UUID;
+        } else if (strcmp(col_type, "JSON") == 0) {
+            type = TYPE_JSON;
         } else if (strcmp(col_type, "FLOAT") == 0 || strcmp(col_type, "DOUBLE") == 0) {
             type = TYPE_FLOAT;
         } else {
@@ -1445,6 +1474,28 @@ static int handle_insert(TokenList *tokens) {
             continue;
         }
         
+        // Handle UUID() as a single value
+        if (strcmp(tokens->tokens[i], "UUID") == 0 && 
+            i + 2 < tokens->count &&
+            strcmp(tokens->tokens[i+1], "(") == 0 &&
+            strcmp(tokens->tokens[i+2], ")") == 0) {
+            
+            if (table->columns[col_idx].type == TYPE_UUID) {
+                char *str = (char*)malloc(37);
+                generate_uuid(str);
+                values[col_idx] = str;
+            } else {
+                printf("ERROR: UUID() used for non-UUID column\n");
+                for (int j = 0; j < col_idx; j++) free(values[j]);
+                free(values);
+                return -1;
+            }
+            
+            col_idx++;
+            i += 3;
+            continue;
+        }
+        
         switch (table->columns[col_idx].type) {
             case TYPE_INTEGER: {
                 int *val = (int*)malloc(sizeof(int));
@@ -1464,6 +1515,23 @@ static int handle_insert(TokenList *tokens) {
             case TYPE_TEXT: {
                 char *str = (char*)malloc(strlen(tokens->tokens[i]) + 1);
                 strcpy(str, tokens->tokens[i]);
+                values[col_idx] = str;
+                break;
+            }
+            case TYPE_JSON: {
+                char *str = (char*)malloc(strlen(tokens->tokens[i]) + 1);
+                strcpy(str, tokens->tokens[i]);
+                values[col_idx] = str;
+                break;
+            }
+            case TYPE_UUID: {
+                char *str = (char*)malloc(37);
+                if (strcmp(tokens->tokens[i], "NULL") == 0) {
+                    generate_uuid(str);
+                } else {
+                    strncpy(str, tokens->tokens[i], 36);
+                    str[36] = '\0';
+                }
                 values[col_idx] = str;
                 break;
             }
@@ -1487,7 +1555,6 @@ static int handle_insert(TokenList *tokens) {
     }
     
     // Check foreign keys
-
     for (int fk = 0; fk < foreign_key_count; fk++) {
         if (strcmp(foreign_keys[fk].table_name, table_name) == 0) {
             int col_idx_fk = table_get_column_index(table, foreign_keys[fk].col_name);
@@ -1528,12 +1595,14 @@ static int handle_insert(TokenList *tokens) {
     if (active_wal && active_wal->in_transaction) {
         char **str_values = (char**)malloc(table->column_count * sizeof(char*));
         for (int j = 0; j < table->column_count; j++) {
-            char buf[128];
+            char buf[256];
             switch (table->columns[j].type) {
                 case TYPE_INTEGER:
                     snprintf(buf, sizeof(buf), "%d", *(int*)values[j]);
                     break;
                 case TYPE_TEXT:
+                case TYPE_UUID:
+                case TYPE_JSON:
                     snprintf(buf, sizeof(buf), "%s", (char*)values[j]);
                     break;
                 case TYPE_FLOAT:
@@ -1613,10 +1682,9 @@ static int handle_select(TokenList *tokens) {
         return 0;
     }
     
-    // WHERE clause
     char col_name[64];
     char op[4];
-    char value[128];
+    char value[256];
     
     strcpy(col_name, tokens->tokens[from_idx + 3]);
     strcpy(op, tokens->tokens[from_idx + 4]);
@@ -1628,11 +1696,10 @@ static int handle_select(TokenList *tokens) {
         return -1;
     }
     
-    // Check for AND/OR
     char logic[8] = "";
     int col2_idx = -1;
     char op2[4] = "";
-    char value2[128] = "";
+    char value2[256] = "";
     
     if (from_idx + 6 < tokens->count) {
         strcpy(logic, tokens->tokens[from_idx + 6]);
@@ -1673,13 +1740,16 @@ static int handle_select(TokenList *tokens) {
             else if (strcmp(op, ">=") == 0 && row_val >= cond_val) matches = 1;
             else if (strcmp(op, "<=") == 0 && row_val <= cond_val) matches = 1;
             else if (strcmp(op, "!=") == 0 && row_val != cond_val) matches = 1;
-            else if (strcmp(op, "<>") == 0 && row_val != cond_val) matches = 1;            
-        } else if (table->columns[col_idx].type == TYPE_TEXT) {
+            else if (strcmp(op, "<>") == 0 && row_val != cond_val) matches = 1;
+        } else if (table->columns[col_idx].type == TYPE_TEXT ||
+                   table->columns[col_idx].type == TYPE_UUID ||
+                   table->columns[col_idx].type == TYPE_JSON) {
             char *row_val = (char*)row[col_idx];
             if (strcmp(op, "=") == 0 && strcmp(row_val, value) == 0) matches = 1;
+            else if (strcmp(op, "!=") == 0 && strcmp(row_val, value) != 0) matches = 1;
+            else if (strcmp(op, "<>") == 0 && strcmp(row_val, value) != 0) matches = 1;
         }
         
-        // Apply AND/OR
         if (col2_idx >= 0 && strlen(logic) > 0) {
             int matches2 = 0;
             if (table->columns[col2_idx].type == TYPE_INTEGER) {
@@ -1689,9 +1759,15 @@ static int handle_select(TokenList *tokens) {
                 else if (strcmp(op2, "=") == 0 && row_val2 == cond2_val) matches2 = 1;
                 else if (strcmp(op2, ">=") == 0 && row_val2 >= cond2_val) matches2 = 1;
                 else if (strcmp(op2, "<=") == 0 && row_val2 <= cond2_val) matches2 = 1;
-            } else if (table->columns[col2_idx].type == TYPE_TEXT) {
+                else if (strcmp(op2, "!=") == 0 && row_val2 != cond2_val) matches2 = 1;
+                else if (strcmp(op2, "<>") == 0 && row_val2 != cond2_val) matches2 = 1;
+            } else if (table->columns[col2_idx].type == TYPE_TEXT ||
+                       table->columns[col2_idx].type == TYPE_UUID ||
+                       table->columns[col2_idx].type == TYPE_JSON) {
                 char *row_val2 = (char*)row[col2_idx];
                 if (strcmp(op2, "=") == 0 && strcmp(row_val2, value2) == 0) matches2 = 1;
+                else if (strcmp(op2, "!=") == 0 && strcmp(row_val2, value2) != 0) matches2 = 1;
+                else if (strcmp(op2, "<>") == 0 && strcmp(row_val2, value2) != 0) matches2 = 1;
             }
             
             if (strcmp(logic, "AND") == 0) matches = matches && matches2;
@@ -1707,6 +1783,12 @@ static int handle_select(TokenList *tokens) {
                         break;
                     case TYPE_TEXT:
                         printf("%-15s ", (char*)row[idx]);
+                        break;
+                    case TYPE_UUID:
+                        printf("%-38s ", (char*)row[idx]);
+                        break;
+                    case TYPE_JSON:
+                        printf("%-30s ", (char*)row[idx]);
                         break;
                     case TYPE_FLOAT:
                         printf("%-15.2f ", *(double*)row[idx]);

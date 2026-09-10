@@ -11,7 +11,9 @@
 typedef enum {
     TYPE_INTEGER,
     TYPE_TEXT,
-    TYPE_FLOAT
+    TYPE_FLOAT,
+    TYPE_UUID,
+    TYPE_JSON
 } ColumnType;
 
 typedef struct {
@@ -34,22 +36,11 @@ typedef struct {
     size_t row_capacity;
 } Table;
 
-// Creates a new table
 Table *table_create(const char *name);
-
-// Adds a column to a table
 int table_add_column(Table *table, const char *name, ColumnType type);
-
-// Inserts a row into the table
 int table_insert(Table *table, void **values);
-
-// Frees a table
 void table_destroy(Table *table);
-
-// Gets the column index by name
 int table_get_column_index(Table *table, const char *name);
-
-// Gets a column's B-Tree index (creates if needed)
 BTree *table_get_index(Table *table, int column_index);
 
 #endif // HEAVENDB_TABLE_H
