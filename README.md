@@ -2,11 +2,11 @@
 
 A high-performance SQL database engine written in pure C. Built from scratch with zero external dependencies.
 
-![Version](https://img.shields.io/badge/version-3.0-blue)
+![Version](https://img.shields.io/badge/version-4.0-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-![Lines of Code](https://img.shields.io/badge/lines%20of%20code-5000%2B-orange)
+![Lines of Code](https://img.shields.io/badge/lines%20of%20code-6000%2B-orange)
 
 ## What is HeavenDB?
 
@@ -33,6 +33,13 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **Distinct Values** — DISTINCT
 - **Transactions** — BEGIN, COMMIT, ROLLBACK with Write-Ahead Log
 - **Query Analysis** — EXPLAIN to see query plans
+
+### Data Types
+- **INTEGER** — 32-bit signed integers
+- **FLOAT** — 64-bit floating point
+- **TEXT** — Variable-length strings
+- **UUID** — 128-bit unique identifiers (auto-generated)
+- **JSON** — Structured JSON documents
 
 ### Storage Engine
 - **In-Memory Hash Map** — 10M+ operations per second
@@ -157,9 +164,10 @@ REVOKE DELETE ON users FROM alice;
 
 ```sql
 CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    id UUID,
     name TEXT NOT NULL,
-    age INTEGER
+    age INTEGER,
+    data JSON
 );
 
 CREATE TABLE orders (
@@ -175,9 +183,9 @@ DROP TABLE orders;
 ### Data Operations
 
 ```sql
-INSERT INTO users VALUES (NULL, 'Aditya', 25);
-INSERT INTO users VALUES (NULL, 'Rahul', 19);
-INSERT INTO users VALUES (NULL, 'Priya', 30);
+INSERT INTO users VALUES (UUID(), 'Aditya', 25, '{"city":"Mumbai","hobbies":["coding","gaming"]}');
+INSERT INTO users VALUES (UUID(), 'Rahul', 19, '{"city":"Delhi"}');
+INSERT INTO users VALUES (UUID(), 'Priya', 30, '{"city":"Bangalore"}');
 
 SELECT * FROM users;
 SELECT name, age FROM users;
@@ -236,7 +244,7 @@ DELETE FROM users WHERE id = 2;
 
 ```sql
 BEGIN;
-INSERT INTO users VALUES (NULL, 'TestUser', 50);
+INSERT INTO users VALUES (UUID(), 'TestUser', 50, '{}');
 COMMIT;
 -- or ROLLBACK;
 ```
@@ -280,6 +288,12 @@ client.on('data', (data) => {
 });
 ```
 
+## Web Dashboard
+
+Open **http://localhost:8080** after running `heavendb serve`.
+
+The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directly in the browser.
+
 ## Tech Stack
 
 - **Language:** C (C99 standard)
@@ -316,9 +330,16 @@ client.on('data', (data) => {
 - [x] FOREIGN KEY (parsed)
 - [x] BACKUP command
 - [x] EXPLAIN command
-- [x] Full-text search
-- [x] UNION
-- [x] Subqueries
+- [x] UUID data type with auto-generation
+- [x] JSON data type
+- [ ] CTEs (Common Table Expressions)
+- [ ] Subqueries
+- [ ] UNION
+- [ ] HAVING clause
+- [ ] CREATE INDEX (manual)
+- [ ] TRUNCATE TABLE
+- [ ] SHOW TABLES / DESCRIBE
+- [ ] Full-text search
 
 ## File Structure
 
