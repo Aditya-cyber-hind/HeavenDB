@@ -21,6 +21,7 @@ static void print_usage(void) {
     printf("  heavendb benchmark <n>           - Run n random operations\n");
     printf("  heavendb flush                   - Force write to disk\n");
     printf("  heavendb sql \"<SQL query>\"       - Execute SQL command\n");
+    printf("  heavendb run <file.sql>          - Execute SQL script file\n");
     printf("  heavendb shell                   - Start interactive mode\n");
     printf("  heavendb serve [port]            - Start TCP + HTTP server\n");
     printf("  heavendb help                    - Show this help\n\n");
@@ -117,6 +118,54 @@ static void run_shell(void) {
     sql_shutdown();
 }
 
+static void run_sql_file(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        printf("ERROR: Cannot open file '%s'\n", filename);
+        return;
+    }
+    
+    printf("Executing SQL script: %s\n", filename);
+    printf("========================================\n\n");
+    
+    char line[2048];
+    int line_num = 0;
+    int success_count = 0;
+    int error_count = 0;
+    
+    while (fgets(line, sizeof(line), fp)) {
+        line_num++;
+        
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
+            line[len-1] = '\0';
+            len--;
+        }
+        
+        // Skip empty lines and comments
+        if (len == 0) continue;
+        if (line[0] == '-' && line[1] == '-') continue;
+        
+        printf("[Line %d] %s\n", line_num, line);
+        int result = sql_execute(line);
+        
+        if (result == 0) {
+            success_count++;
+        } else {
+            error_count++;
+        }
+        
+        printf("\n");
+    }
+    
+    fclose(fp);
+    
+    printf("========================================\n");
+    printf("Script complete!\n");
+    printf("  Commands executed: %d\n", success_count);
+    printf("  Errors: %d\n", error_count);
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_usage();
@@ -154,6 +203,17 @@ int main(int argc, char *argv[]) {
         }
         sql_init();
         sql_execute(argv[2]);
+        sql_shutdown();
+        return 0;
+    }
+    
+    if (strcmp(argv[1], "run") == 0) {
+        if (argc != 3) {
+            printf("Usage: heavendb run <file.sql>\n");
+            return 1;
+        }
+        sql_init();
+        run_sql_file(argv[2]);
         sql_shutdown();
         return 0;
     }

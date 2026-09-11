@@ -1,0 +1,12 @@
+-- HeavenDB test script
+
+DROP TABLE users
+CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, age INTEGER)
+INSERT INTO users VALUES (NULL, 'Aditya', 25)
+INSERT INTO users VALUES (NULL, 'Rahul', 19)
+INSERT INTO users VALUES (NULL, 'Priya', 30)
+SELECT * FROM users
+SELECT * FROM users WHERE age > 20
+SELECT * FROM users ORDER BY age DESC
+SELECT COUNT(*) FROM users
+SELECT AVG(age) FROM users
