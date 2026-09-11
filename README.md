@@ -2,11 +2,11 @@
 
 A high-performance SQL database engine written in pure C. Built from scratch with zero external dependencies.
 
-![Version](https://img.shields.io/badge/version-4.0-blue)
+![Version](https://img.shields.io/badge/version-5.0-blue)
 ![Language](https://img.shields.io/badge/language-C99-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-![Lines of Code](https://img.shields.io/badge/lines%20of%20code-6000%2B-orange)
+![Lines of Code](https://img.shields.io/badge/lines%20of%20code-8000%2B-orange)
 
 ## What is HeavenDB?
 
@@ -21,7 +21,9 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **Joins** — INNER JOIN, LEFT JOIN with ON clause
 - **Views** — Virtual tables with saved queries
 - **Constraints** — PRIMARY KEY, UNIQUE, NOT NULL, AUTO_INCREMENT, FOREIGN KEY
-- **Aggregate Functions** — COUNT, SUM, AVG, MIN, MAX
+- **Aggregate Functions** — COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT
+- **String Functions** — UPPER, LOWER, LENGTH, TRIM, SUBSTR, CONCAT
+- **Math Functions** — ABS, ROUND, FLOOR, CEIL, MOD
 - **Grouping** — GROUP BY with counts
 - **Sorting** — ORDER BY ASC/DESC
 - **Pagination** — LIMIT and OFFSET
@@ -33,6 +35,8 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **Distinct Values** — DISTINCT
 - **Transactions** — BEGIN, COMMIT, ROLLBACK with Write-Ahead Log
 - **Query Analysis** — EXPLAIN to see query plans
+- **Admin Commands** — SHOW TABLES, DESCRIBE, TRUNCATE
+- **Union** — UNION and UNION ALL
 
 ### Data Types
 - **INTEGER** — 32-bit signed integers
@@ -40,6 +44,7 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **TEXT** — Variable-length strings
 - **UUID** — 128-bit unique identifiers (auto-generated)
 - **JSON** — Structured JSON documents
+- **BOOLEAN** — TRUE/FALSE values
 
 ### Storage Engine
 - **In-Memory Hash Map** — 10M+ operations per second
@@ -48,6 +53,7 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **Append-Only File Storage** — Crash-safe persistence
 - **Write-Ahead Log** — ACID transaction support
 - **Custom Binary Format** — `.hdb` files
+- **Auto-Increment Persistence** — Counter survives restarts
 
 ### Networking
 - **TCP Server** — Multi-threaded client-server mode
@@ -69,6 +75,14 @@ Built by a 13-year-old developer to understand how databases work under the hood
 - **REPLICATE TO** — Configure replica servers
 - **SYNC** — Push data to replicas
 - **EXPLAIN** — Analyze query execution plans
+- **SHOW TABLES** — List all tables
+- **DESCRIBE** — Show table schema
+- **TRUNCATE** — Fast table clear
+
+### Script Execution
+- **SQL File Execution** — Run `.sql` scripts with `heavendb run file.sql`
+- **Line-by-line output** — See exactly what executes
+- **Error counting** — Track success and failures
 
 ## Performance
 
@@ -126,6 +140,12 @@ heavendb serve
 
 Then open **http://localhost:8080** for the web dashboard.
 
+### Run SQL Script
+
+```bash
+heavendb run script.sql
+```
+
 ### Key-Value Store
 
 ```bash
@@ -164,9 +184,10 @@ REVOKE DELETE ON users FROM alice;
 
 ```sql
 CREATE TABLE users (
-    id UUID,
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
     name TEXT NOT NULL,
     age INTEGER,
+    active BOOLEAN,
     data JSON
 );
 
@@ -178,14 +199,17 @@ CREATE TABLE orders (
 
 ALTER TABLE users ADD COLUMN email TEXT;
 DROP TABLE orders;
+TRUNCATE TABLE users;
+SHOW TABLES;
+DESCRIBE users;
 ```
 
 ### Data Operations
 
 ```sql
-INSERT INTO users VALUES (UUID(), 'Aditya', 25, '{"city":"Mumbai","hobbies":["coding","gaming"]}');
-INSERT INTO users VALUES (UUID(), 'Rahul', 19, '{"city":"Delhi"}');
-INSERT INTO users VALUES (UUID(), 'Priya', 30, '{"city":"Bangalore"}');
+INSERT INTO users VALUES (NULL, 'Aditya', 25, TRUE, '{"city":"Mumbai"}');
+INSERT INTO users VALUES (NULL, 'Rahul', 19, FALSE, '{"city":"Delhi"}');
+INSERT INTO users VALUES (NULL, 'Priya', 30, TRUE, '{"city":"Bangalore"}');
 
 SELECT * FROM users;
 SELECT name, age FROM users;
@@ -195,7 +219,30 @@ SELECT * FROM users WHERE name = 'Aditya' OR name = 'Priya';
 SELECT * FROM users WHERE age IN (25, 30);
 SELECT * FROM users WHERE name LIKE 'Adi%';
 SELECT * FROM users WHERE age BETWEEN 20 AND 30;
-SELECT * FROM users WHERE email IS NULL;
+SELECT * FROM users WHERE active = TRUE;
+```
+
+### String Functions
+
+```sql
+SELECT UPPER(name) FROM users;
+SELECT LOWER(name) FROM users;
+SELECT LENGTH(name) FROM users;
+SELECT TRIM('  hello  ');
+SELECT SUBSTR('Hello World', 1, 5);
+SELECT CONCAT('Mr. ', name) FROM users;
+SELECT CONCAT(name, ' - ', age) FROM users;
+```
+
+### Math Functions
+
+```sql
+SELECT ABS(-5);
+SELECT ROUND(3.14159);
+SELECT ROUND(3.14159, 2);
+SELECT FLOOR(3.9);
+SELECT CEIL(3.1);
+SELECT MOD(10, 3);
 ```
 
 ### Aggregations
@@ -208,6 +255,7 @@ SELECT MIN(age) FROM users;
 SELECT MAX(age) FROM users;
 SELECT age, COUNT(*) FROM users GROUP BY age;
 SELECT DISTINCT age FROM users;
+SELECT GROUP_CONCAT(name) FROM users;
 ```
 
 ### Sorting and Pagination
@@ -244,7 +292,7 @@ DELETE FROM users WHERE id = 2;
 
 ```sql
 BEGIN;
-INSERT INTO users VALUES (UUID(), 'TestUser', 50, '{}');
+INSERT INTO users VALUES (NULL, 'TestUser', 50, TRUE, '{}');
 COMMIT;
 -- or ROLLBACK;
 ```
@@ -294,6 +342,24 @@ Open **http://localhost:8080** after running `heavendb serve`.
 
 The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directly in the browser.
 
+## SQL Script Files
+
+Create a `.sql` file:
+
+```sql
+-- my_script.sql
+CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, age INTEGER);
+INSERT INTO users VALUES (NULL, 'Aditya', 25);
+INSERT INTO users VALUES (NULL, 'Rahul', 19);
+SELECT * FROM users;
+```
+
+Run it:
+
+```bash
+heavendb run my_script.sql
+```
+
 ## Tech Stack
 
 - **Language:** C (C99 standard)
@@ -304,6 +370,7 @@ The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directl
 
 ## Roadmap
 
+### Core SQL
 - [x] Hash Map storage engine
 - [x] Group Commit buffering
 - [x] SQL parser (CREATE, INSERT, SELECT, UPDATE, DELETE)
@@ -311,15 +378,14 @@ The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directl
 - [x] Persistent storage
 - [x] ACID transactions with WAL
 - [x] TCP server
+- [x] HTTP server + Web Dashboard
 - [x] User authentication
 - [x] Password security with lockout
 - [x] INNER JOIN
 - [x] LEFT JOIN
 - [x] Views
 - [x] GRANT / REVOKE permissions
-- [x] Replication
-- [x] Web Dashboard
-- [x] HTTP Server
+- [x] Replication (basic)
 - [x] COUNT, SUM, AVG, MIN, MAX
 - [x] ORDER BY, GROUP BY
 - [x] LIMIT, OFFSET, DISTINCT
@@ -332,14 +398,33 @@ The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directl
 - [x] EXPLAIN command
 - [x] UUID data type with auto-generation
 - [x] JSON data type
-- [ ] CTEs (Common Table Expressions)
-- [ ] Subqueries
-- [ ] UNION
-- [ ] HAVING clause
+- [x] BOOLEAN data type
+- [x] String functions (UPPER, LOWER, LENGTH, TRIM, SUBSTR, CONCAT)
+- [x] Math functions (ABS, ROUND, FLOOR, CEIL, MOD)
+- [x] SHOW TABLES, DESCRIBE, TRUNCATE
+- [x] HAVING clause
+- [x] UNION
+- [x] CTEs (basic)
+- [x] SQL script file execution
+
+### Coming Soon
+- [ ] GROUP_CONCAT
 - [ ] CREATE INDEX (manual)
-- [ ] TRUNCATE TABLE
-- [ ] SHOW TABLES / DESCRIBE
-- [ ] Full-text search
+- [ ] CROSS JOIN
+- [ ] RIGHT JOIN
+- [ ] FULL JOIN
+- [ ] UNION ALL
+- [ ] Subqueries
+- [ ] EXISTS / NOT EXISTS
+- [ ] CASE WHEN
+- [ ] ANY / ALL / SOME
+- [ ] SAVEPOINT
+- [ ] Foreign Key CASCADE
+- [ ] JSON functions (json_extract, json_set)
+- [ ] Date/Time types
+- [ ] Window Functions (ROW_NUMBER, RANK)
+- [ ] Triggers
+- [ ] Stored Procedures
 
 ## File Structure
 
@@ -365,6 +450,7 @@ HeavenDB/
 │   ├── index.html          # Web dashboard UI
 │   ├── style.css           # Dashboard styles
 │   └── app.js              # Dashboard logic
+├── test.sql                # Sample SQL script
 ├── README.md
 └── Makefile
 ```
