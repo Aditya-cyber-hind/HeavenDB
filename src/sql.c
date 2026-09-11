@@ -88,6 +88,17 @@ int sql_save(void) {
             
             uint32_t col_type = (uint32_t)table->columns[c].type;
             fwrite(&col_type, sizeof(uint32_t), 1, fp);
+            
+            // Save column flags
+            int flags = 0;
+            if (table->columns[c].is_primary_key) flags |= 1;
+            if (table->columns[c].is_unique) flags |= 2;
+            if (table->columns[c].is_not_null) flags |= 4;
+            if (table->columns[c].is_auto_increment) flags |= 8;
+            fwrite(&flags, sizeof(int), 1, fp);
+            
+            // Save next_auto_value
+            fwrite(&table->columns[c].next_auto_value, sizeof(int), 1, fp);
         }
         
         uint32_t row_count = (uint32_t)table->row_count;
@@ -211,6 +222,22 @@ int sql_load(void) {
             
             table_add_column(table, col_name, (ColumnType)col_type);
             free(col_name);
+            
+            int col_idx = table->column_count - 1;
+            
+            // Load column flags
+            int flags = 0;
+            if (fread(&flags, sizeof(int), 1, fp) == 1) {
+                if (flags & 1) table->columns[col_idx].is_primary_key = 1;
+                if (flags & 2) table->columns[col_idx].is_unique = 1;
+                if (flags & 4) table->columns[col_idx].is_not_null = 1;
+                if (flags & 8) table->columns[col_idx].is_auto_increment = 1;
+                
+                int next_val = 1;
+                if (fread(&next_val, sizeof(int), 1, fp) == 1) {
+                    table->columns[col_idx].next_auto_value = next_val;
+                }
+            }
         }
         
         uint32_t row_count;
@@ -2672,6 +2699,361 @@ static int handle_is_null(TokenList *tokens) {
     return 0;
 }
 
+// ==================== SHOW TABLES ====================
+
+static int handle_show_tables(TokenList *tokens) {
+    (void)tokens;
+    
+    printf("%-30s %-10s\n", "Table Name", "Columns");
+    printf("%-30s %-10s\n", "------------------------------", "-------");
+    
+    for (int i = 0; i < table_count; i++) {
+        printf("%-30s %-10d\n", tables[i]->name, tables[i]->column_count);
+    }
+    
+    printf("\n(%d table%s)\n", table_count, table_count == 1 ? "" : "s");
+    return 0;
+}
+
+// ==================== DESCRIBE ====================
+
+static int handle_describe(TokenList *tokens) {
+    if (tokens->count < 2) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    printf("Table: %s\n", table_name);
+    printf("%-20s %-12s %-10s %-10s\n", "Column", "Type", "Null", "Key");
+    printf("%-20s %-12s %-10s %-10s\n", "------", "----", "----", "---");
+    
+    for (int i = 0; i < table->column_count; i++) {
+        const char *type_str;
+        switch (table->columns[i].type) {
+            case TYPE_INTEGER: type_str = "INTEGER"; break;
+            case TYPE_TEXT:    type_str = "TEXT";    break;
+            case TYPE_FLOAT:   type_str = "FLOAT";   break;
+            case TYPE_UUID:    type_str = "UUID";    break;
+            case TYPE_JSON:    type_str = "JSON";    break;
+            default:           type_str = "UNKNOWN"; break;
+        }
+        
+        const char *null_str = table->columns[i].is_not_null ? "NOT NULL" : "YES";
+        
+        const char *key_str = "";
+        if (table->columns[i].is_primary_key) key_str = "PRIMARY";
+        else if (table->columns[i].is_unique) key_str = "UNIQUE";
+        
+        printf("%-20s %-12s %-10s %-10s\n", 
+               table->columns[i].name, type_str, null_str, key_str);
+    }
+    
+    printf("\n(%d column%s)\n", table->column_count, table->column_count == 1 ? "" : "s");
+    return 0;
+}
+
+// ==================== TRUNCATE ====================
+
+static int handle_truncate(TokenList *tokens) {
+    if (tokens->count < 3) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[2]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    for (size_t i = 0; i < table->row_count; i++) {
+        void **row = (void**)table->rows[i];
+        for (int j = 0; j < table->column_count; j++) {
+            free(row[j]);
+        }
+        free(row);
+    }
+    
+    table->row_count = 0;
+    
+    for (int i = 0; i < table->column_count; i++) {
+        if (table->columns[i].is_auto_increment) {
+            table->columns[i].next_auto_value = 1;
+        }
+    }
+    
+    sql_save();
+    printf("OK. Truncated table '%s'\n", table_name);
+    return 0;
+}
+
+// ==================== HAVING ====================
+
+static int handle_having(TokenList *tokens) {
+    if (tokens->count < 8) return -1;
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    int group_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "GROUP") == 0) {
+            group_idx = i;
+            break;
+        }
+    }
+    
+    int having_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "HAVING") == 0) {
+            having_idx = i;
+            break;
+        }
+    }
+    
+    if (group_idx == -1 || having_idx == -1) return -1;
+    
+    char group_col[64];
+    strcpy(group_col, tokens->tokens[group_idx + 2]);
+    
+    int col_idx = table_get_column_index(table, group_col);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", group_col);
+        return -1;
+    }
+    
+    int min_count = 0;
+    for (int i = having_idx; i < tokens->count - 1; i++) {
+        if (strcmp(tokens->tokens[i], ">") == 0) {
+            min_count = atoi(tokens->tokens[i + 1]);
+            break;
+        }
+    }
+    
+    printf("%-15s %-10s\n", group_col, "COUNT");
+    printf("%-15s %-10s\n", "---", "---");
+    
+    for (size_t i = 0; i < table->row_count; i++) {
+        void **row = (void**)table->rows[i];
+        int val = *(int*)row[col_idx];
+        
+        int already_counted = 0;
+        for (size_t j = 0; j < i; j++) {
+            void **prev_row = (void**)table->rows[j];
+            if (*(int*)prev_row[col_idx] == val) {
+                already_counted = 1;
+                break;
+            }
+        }
+        
+        if (!already_counted) {
+            int count = 0;
+            for (size_t j = 0; j < table->row_count; j++) {
+                void **check_row = (void**)table->rows[j];
+                if (*(int*)check_row[col_idx] == val) {
+                    count++;
+                }
+            }
+            
+            if (count > min_count) {
+                printf("%-15d %-10d\n", val, count);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+// ==================== UNION ====================
+
+static int handle_union(TokenList *tokens) {
+    if (tokens->count < 7) return -1;
+    
+    int union_idx = -1;
+    for (int i = 0; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "UNION") == 0) {
+            union_idx = i;
+            break;
+        }
+    }
+    
+    if (union_idx == -1) return -1;
+    
+    int from1_idx = -1;
+    for (int i = 1; i < union_idx; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from1_idx = i;
+            break;
+        }
+    }
+    
+    int from2_idx = -1;
+    for (int i = union_idx + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from2_idx = i;
+            break;
+        }
+    }
+    
+    if (from1_idx == -1 || from2_idx == -1) {
+        printf("ERROR: Invalid UNION syntax\n");
+        return -1;
+    }
+    
+    char table1_name[MAX_TABLE_NAME];
+    char table2_name[MAX_TABLE_NAME];
+    strcpy(table1_name, tokens->tokens[from1_idx + 1]);
+    strcpy(table2_name, tokens->tokens[from2_idx + 1]);
+    
+    Table *table1 = find_table(table1_name);
+    Table *table2 = find_table(table2_name);
+    
+    if (!table1 || !table2) {
+        printf("ERROR: Table not found\n");
+        return -1;
+    }
+    
+    char col_name[64];
+    strcpy(col_name, tokens->tokens[1]);
+    
+    int col1_idx = table_get_column_index(table1, col_name);
+    int col2_idx = table_get_column_index(table2, col_name);
+    
+    if (col1_idx == -1 || col2_idx == -1) {
+        printf("ERROR: Column '%s' not found in both tables\n", col_name);
+        return -1;
+    }
+    
+    printf("%-15s\n", col_name);
+    printf("%-15s\n", "---------------");
+    
+    int total = 0;
+    
+    for (size_t r = 0; r < table1->row_count; r++) {
+        void **row = (void**)table1->rows[r];
+        switch (table1->columns[col1_idx].type) {
+            case TYPE_INTEGER:
+                printf("%-15d\n", *(int*)row[col1_idx]);
+                break;
+            case TYPE_TEXT:
+            case TYPE_UUID:
+            case TYPE_JSON:
+                printf("%-15s\n", (char*)row[col1_idx]);
+                break;
+            case TYPE_FLOAT:
+                printf("%-15.2f\n", *(double*)row[col1_idx]);
+                break;
+        }
+        total++;
+    }
+    
+    for (size_t r = 0; r < table2->row_count; r++) {
+        void **row = (void**)table2->rows[r];
+        switch (table2->columns[col2_idx].type) {
+            case TYPE_INTEGER:
+                printf("%-15d\n", *(int*)row[col2_idx]);
+                break;
+            case TYPE_TEXT:
+            case TYPE_UUID:
+            case TYPE_JSON:
+                printf("%-15s\n", (char*)row[col2_idx]);
+                break;
+            case TYPE_FLOAT:
+                printf("%-15.2f\n", *(double*)row[col2_idx]);
+                break;
+        }
+        total++;
+    }
+    
+    printf("\n(%d row%s)\n", total, total == 1 ? "" : "s");
+    return 0;
+}
+
+// ==================== CTE ====================
+
+static int handle_cte(TokenList *tokens) {
+    if (tokens->count < 7) return -1;
+    
+    char cte_name[MAX_TABLE_NAME];
+    strcpy(cte_name, tokens->tokens[1]);
+    
+    int as_idx = -1;
+    for (int i = 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "AS") == 0) {
+            as_idx = i;
+            break;
+        }
+    }
+    
+    if (as_idx == -1) return -1;
+    
+    int open_paren = -1;
+    int close_paren = -1;
+    for (int i = as_idx + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0 && open_paren == -1) {
+            open_paren = i;
+        }
+        if (strcmp(tokens->tokens[i], ")") == 0 && open_paren != -1) {
+            close_paren = i;
+            break;
+        }
+    }
+    
+    if (open_paren == -1 || close_paren == -1) return -1;
+    
+    char inner_sql[1024] = "";
+    for (int i = open_paren + 1; i < close_paren; i++) {
+        strcat(inner_sql, tokens->tokens[i]);
+        if (i < close_paren - 1) strcat(inner_sql, " ");
+    }
+    
+    int main_from_idx = -1;
+    for (int i = close_paren + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            main_from_idx = i;
+            break;
+        }
+    }
+    
+    if (main_from_idx == -1) return -1;
+    
+    char main_table[MAX_TABLE_NAME];
+    strcpy(main_table, tokens->tokens[main_from_idx + 1]);
+    
+    if (strcmp(main_table, cte_name) != 0) {
+        printf("ERROR: CTE '%s' not referenced in main query\n", cte_name);
+        return -1;
+    }
+    
+    printf("-- CTE '%s' executes:\n", cte_name);
+    sql_execute(inner_sql);
+    printf("-- Main query results:\n");
+    
+    return 0;
+}
+
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -2681,6 +3063,11 @@ int sql_execute(const char *sql) {
     char command[MAX_TOKEN_LEN];
     strcpy(command, list.tokens[0]);
     to_upper(command);
+    
+    // CTEs (WITH) — must be checked first
+    if (strcmp(command, "WITH") == 0) {
+        return handle_cte(&list);
+    }
     
     if (strcmp(command, "BEGIN") == 0) {
         if (sql_begin() == 0) {
@@ -2726,6 +3113,21 @@ int sql_execute(const char *sql) {
     }
     else if (strcmp(command, "ALTER") == 0) {
         return handle_alter_table(&list);
+    }
+    else if (strcmp(command, "SHOW") == 0) {
+        char second[MAX_TOKEN_LEN];
+        strcpy(second, list.tokens[1]);
+        to_upper(second);
+        
+        if (strcmp(second, "TABLES") == 0) {
+            return handle_show_tables(&list);
+        }
+    }
+    else if (strcmp(command, "DESCRIBE") == 0 || strcmp(command, "DESC") == 0) {
+        return handle_describe(&list);
+    }
+    else if (strcmp(command, "TRUNCATE") == 0) {
+        return handle_truncate(&list);
     }
     else if (strcmp(command, "LOGIN") == 0) {
         return handle_login(&list);
@@ -2836,6 +3238,18 @@ int sql_execute(const char *sql) {
             return handle_limit(&list);
         }
         
+        // HAVING (must come before GROUP BY)
+        int has_having = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "HAVING") == 0) {
+                has_having = 1;
+                break;
+            }
+        }
+        if (has_having) {
+            return handle_having(&list);
+        }
+        
         // GROUP BY
         int has_group = 0;
         for (int i = 0; i < list.count; i++) {
@@ -2860,6 +3274,18 @@ int sql_execute(const char *sql) {
             return handle_order_by(&list);
         }
         
+        // UNION
+        int has_union = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "UNION") == 0) {
+                has_union = 1;
+                break;
+            }
+        }
+        if (has_union) {
+            return handle_union(&list);
+        }
+        
         // JOIN
         int has_join = 0;
         int is_left_join = 0;
@@ -2882,19 +3308,8 @@ int sql_execute(const char *sql) {
         }
         
         // Check for view
-                // Find the table name from FROM clause
-        int from_pos = -1;
-        for (int i = 0; i < list.count; i++) {
-            if (strcmp(list.tokens[i], "FROM") == 0) {
-                from_pos = i;
-                break;
-            }
-        }
-        
-        if (from_pos >= 0 && from_pos + 1 < list.count) {
-            if (!find_table(list.tokens[from_pos + 1])) {
-                return handle_select_view(&list);
-            }
+        if (!find_table(list.tokens[3])) {
+            return handle_select_view(&list);
         }
         
         return handle_select(&list);
