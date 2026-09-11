@@ -71,7 +71,8 @@ int table_insert(Table *table, void **values) {
     
     for (int i = 0; i < table->column_count; i++) {
         switch (table->columns[i].type) {
-            case TYPE_INTEGER: {
+            case TYPE_INTEGER:
+            case TYPE_BOOLEAN: {
                 int *val = (int*)malloc(sizeof(int));
                 *val = *(int*)values[i];
                 row[i] = val;
@@ -117,7 +118,8 @@ int table_insert(Table *table, void **values) {
         if (table->columns[i].is_unique) {
             for (size_t r = 0; r < table->row_count; r++) {
                 void **existing = (void**)table->rows[r];
-                if (table->columns[i].type == TYPE_INTEGER) {
+                if (table->columns[i].type == TYPE_INTEGER ||
+                    table->columns[i].type == TYPE_BOOLEAN) {
                     if (*(int*)existing[i] == *(int*)row[i]) {
                         printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
                         for (int j = 0; j < table->column_count; j++) free(row[j]);

@@ -13,7 +13,8 @@ typedef enum {
     TYPE_TEXT,
     TYPE_FLOAT,
     TYPE_UUID,
-    TYPE_JSON
+    TYPE_JSON,
+    TYPE_BOOLEAN
 } ColumnType;
 
 typedef struct {

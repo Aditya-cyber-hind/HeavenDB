@@ -89,7 +89,6 @@ int sql_save(void) {
             uint32_t col_type = (uint32_t)table->columns[c].type;
             fwrite(&col_type, sizeof(uint32_t), 1, fp);
             
-            // Save column flags
             int flags = 0;
             if (table->columns[c].is_primary_key) flags |= 1;
             if (table->columns[c].is_unique) flags |= 2;
@@ -97,7 +96,6 @@ int sql_save(void) {
             if (table->columns[c].is_auto_increment) flags |= 8;
             fwrite(&flags, sizeof(int), 1, fp);
             
-            // Save next_auto_value
             fwrite(&table->columns[c].next_auto_value, sizeof(int), 1, fp);
         }
         
@@ -108,7 +106,8 @@ int sql_save(void) {
             void **row = (void**)table->rows[r];
             for (int c = 0; c < table->column_count; c++) {
                 switch (table->columns[c].type) {
-                    case TYPE_INTEGER: {
+                    case TYPE_INTEGER:
+                    case TYPE_BOOLEAN: {
                         int val = *(int*)row[c];
                         fwrite(&val, sizeof(int), 1, fp);
                         break;
@@ -225,7 +224,6 @@ int sql_load(void) {
             
             int col_idx = table->column_count - 1;
             
-            // Load column flags
             int flags = 0;
             if (fread(&flags, sizeof(int), 1, fp) == 1) {
                 if (flags & 1) table->columns[col_idx].is_primary_key = 1;
@@ -257,7 +255,8 @@ int sql_load(void) {
             
             for (int c = 0; c < table->column_count; c++) {
                 switch (table->columns[c].type) {
-                    case TYPE_INTEGER: {
+                    case TYPE_INTEGER:
+                    case TYPE_BOOLEAN: {
                         int *val = (int*)malloc(sizeof(int));
                         if (!val) {
                             free(values);
@@ -516,6 +515,9 @@ static void print_table(Table *table, int *column_indices, int col_count) {
             switch (table->columns[idx].type) {
                 case TYPE_INTEGER:
                     printf("%-15d ", *(int*)row[idx]);
+                    break;
+                case TYPE_BOOLEAN:
+                    printf("%-15s ", *(int*)row[idx] ? "TRUE" : "FALSE");
                     break;
                 case TYPE_TEXT:
                     printf("%-15s ", (char*)row[idx]);
@@ -1298,6 +1300,8 @@ static int handle_create_table(TokenList *tokens) {
             type = TYPE_UUID;
         } else if (strcmp(col_type, "JSON") == 0) {
             type = TYPE_JSON;
+        } else if (strcmp(col_type, "BOOLEAN") == 0 || strcmp(col_type, "BOOL") == 0) {
+            type = TYPE_BOOLEAN;
         } else if (strcmp(col_type, "FLOAT") == 0 || strcmp(col_type, "DOUBLE") == 0) {
             type = TYPE_FLOAT;
         } else {
@@ -1539,6 +1543,23 @@ static int handle_insert(TokenList *tokens) {
                 values[col_idx] = val;
                 break;
             }
+            case TYPE_BOOLEAN: {
+                int *val = (int*)malloc(sizeof(int));
+                char upper[16];
+                strncpy(upper, tokens->tokens[i], 15);
+                upper[15] = '\0';
+                to_upper(upper);
+                
+                if (strcmp(upper, "TRUE") == 0 || strcmp(upper, "1") == 0) {
+                    *val = 1;
+                } else if (strcmp(upper, "FALSE") == 0 || strcmp(upper, "0") == 0) {
+                    *val = 0;
+                } else {
+                    *val = atoi(tokens->tokens[i]);
+                }
+                values[col_idx] = val;
+                break;
+            }
             case TYPE_TEXT: {
                 char *str = (char*)malloc(strlen(tokens->tokens[i]) + 1);
                 strcpy(str, tokens->tokens[i]);
@@ -1625,6 +1646,9 @@ static int handle_insert(TokenList *tokens) {
             char buf[256];
             switch (table->columns[j].type) {
                 case TYPE_INTEGER:
+                    snprintf(buf, sizeof(buf), "%d", *(int*)values[j]);
+                    break;
+                case TYPE_BOOLEAN:
                     snprintf(buf, sizeof(buf), "%d", *(int*)values[j]);
                     break;
                 case TYPE_TEXT:
@@ -1759,7 +1783,8 @@ static int handle_select(TokenList *tokens) {
         void **row = (void**)table->rows[r];
         
         int matches = 0;
-        if (table->columns[col_idx].type == TYPE_INTEGER) {
+        if (table->columns[col_idx].type == TYPE_INTEGER ||
+            table->columns[col_idx].type == TYPE_BOOLEAN) {
             int row_val = *(int*)row[col_idx];
             if (strcmp(op, ">") == 0 && row_val > cond_val) matches = 1;
             else if (strcmp(op, "<") == 0 && row_val < cond_val) matches = 1;
@@ -1779,7 +1804,8 @@ static int handle_select(TokenList *tokens) {
         
         if (col2_idx >= 0 && strlen(logic) > 0) {
             int matches2 = 0;
-            if (table->columns[col2_idx].type == TYPE_INTEGER) {
+            if (table->columns[col2_idx].type == TYPE_INTEGER ||
+                table->columns[col2_idx].type == TYPE_BOOLEAN) {
                 int row_val2 = *(int*)row[col2_idx];
                 if (strcmp(op2, ">") == 0 && row_val2 > cond2_val) matches2 = 1;
                 else if (strcmp(op2, "<") == 0 && row_val2 < cond2_val) matches2 = 1;
@@ -1807,6 +1833,9 @@ static int handle_select(TokenList *tokens) {
                 switch (table->columns[idx].type) {
                     case TYPE_INTEGER:
                         printf("%-15d ", *(int*)row[idx]);
+                        break;
+                    case TYPE_BOOLEAN:
+                        printf("%-15s ", *(int*)row[idx] ? "TRUE" : "FALSE");
                         break;
                     case TYPE_TEXT:
                         printf("%-15s ", (char*)row[idx]);
@@ -3054,6 +3083,345 @@ static int handle_cte(TokenList *tokens) {
     return 0;
 }
 
+static int handle_string_function(TokenList *tokens) {
+    if (tokens->count < 3) return -1;
+    
+    char func_name[32];
+    strcpy(func_name, tokens->tokens[1]);
+    to_upper(func_name);
+    
+    char *paren = strchr(func_name, '(');
+    if (paren) *paren = '\0';
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    Table *table = NULL;
+    if (from_idx != -1) {
+        char table_name[MAX_TABLE_NAME];
+        strcpy(table_name, tokens->tokens[from_idx + 1]);
+        table = find_table(table_name);
+        if (!table) {
+            printf("ERROR: Table '%s' not found\n", table_name);
+            return -1;
+        }
+    }
+    
+    char arg[256] = "";
+    int arg_start = -1;
+    
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0) {
+            arg_start = i + 1;
+            break;
+        }
+    }
+    
+    if (arg_start == -1 || arg_start >= tokens->count) {
+        printf("ERROR: Invalid function syntax\n");
+        return -1;
+    }
+    
+    strcpy(arg, tokens->tokens[arg_start]);
+    
+    int substr_start = 0;
+    int substr_len = 0;
+    if (strcmp(func_name, "SUBSTR") == 0 || strcmp(func_name, "SUBSTRING") == 0) {
+        if (arg_start + 4 < tokens->count) {
+            substr_start = atoi(tokens->tokens[arg_start + 2]);
+            substr_len = atoi(tokens->tokens[arg_start + 4]);
+        }
+    }
+    
+    printf("result\n");
+    printf("------\n");
+    
+    int match_count = 0;
+    
+    if (table) {
+        int col_idx = -1;
+        
+        // For CONCAT, don't require first arg to be a column
+        if (strcmp(func_name, "CONCAT") != 0) {
+            col_idx = table_get_column_index(table, arg);
+            if (col_idx == -1) {
+                printf("ERROR: Column '%s' not found\n", arg);
+                return -1;
+            }
+        }
+        
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **row = (void**)table->rows[r];
+            char value[256] = "";
+            
+            if (col_idx >= 0) {
+                switch (table->columns[col_idx].type) {
+                    case TYPE_TEXT:
+                    case TYPE_UUID:
+                    case TYPE_JSON:
+                        strcpy(value, (char*)row[col_idx]);
+                        break;
+                    case TYPE_INTEGER:
+                        snprintf(value, sizeof(value), "%d", *(int*)row[col_idx]);
+                        break;
+                    case TYPE_BOOLEAN:
+                        strcpy(value, *(int*)row[col_idx] ? "TRUE" : "FALSE");
+                        break;
+                    case TYPE_FLOAT:
+                        snprintf(value, sizeof(value), "%.2f", *(double*)row[col_idx]);
+                        break;
+                }
+            }
+            
+            char result[512] = "";
+            
+            if (strcmp(func_name, "UPPER") == 0) {
+                strcpy(result, value);
+                to_upper(result);
+            }
+            else if (strcmp(func_name, "LOWER") == 0) {
+                strcpy(result, value);
+                for (int k = 0; result[k]; k++) {
+                    result[k] = tolower((unsigned char)result[k]);
+                }
+            }
+            else if (strcmp(func_name, "LENGTH") == 0) {
+                snprintf(result, sizeof(result), "%zu", strlen(value));
+            }
+            else if (strcmp(func_name, "TRIM") == 0) {
+                char *start = value;
+                while (*start == ' ' || *start == '\t') start++;
+                strcpy(result, start);
+                int len = strlen(result);
+                while (len > 0 && (result[len-1] == ' ' || result[len-1] == '\t')) {
+                    result[len-1] = '\0';
+                    len--;
+                }
+            }
+            else if (strcmp(func_name, "SUBSTR") == 0 || strcmp(func_name, "SUBSTRING") == 0) {
+                int len = strlen(value);
+                int start = substr_start - 1;
+                if (start < 0) start = len + start;
+                if (start < 0) start = 0;
+                if (start > len) start = len;
+                
+                int end = start + substr_len;
+                if (substr_len == 0) end = len;
+                if (end > len) end = len;
+                
+                int k = 0;
+                for (int j = start; j < end && k < 255; j++) {
+                    result[k++] = value[j];
+                }
+                result[k] = '\0';
+            }
+            else if (strcmp(func_name, "CONCAT") == 0) {
+                char result_buf[512] = "";
+                
+                for (int k = arg_start; k < tokens->count; k++) {
+                    if (strcmp(tokens->tokens[k], ")") == 0) break;
+                    if (strcmp(tokens->tokens[k], ",") == 0) continue;
+                    if (strcmp(tokens->tokens[k], "FROM") == 0) break;
+                    
+                    char part[256] = "";
+                    int col_idx_k = table_get_column_index(table, tokens->tokens[k]);
+                    
+                    if (col_idx_k >= 0) {
+                        switch (table->columns[col_idx_k].type) {
+                            case TYPE_TEXT:
+                            case TYPE_UUID:
+                            case TYPE_JSON:
+                                strcpy(part, (char*)row[col_idx_k]);
+                                break;
+                            case TYPE_INTEGER:
+                                snprintf(part, sizeof(part), "%d", *(int*)row[col_idx_k]);
+                                break;
+                            case TYPE_BOOLEAN:
+                                strcpy(part, *(int*)row[col_idx_k] ? "TRUE" : "FALSE");
+                                break;
+                            case TYPE_FLOAT:
+                                snprintf(part, sizeof(part), "%.2f", *(double*)row[col_idx_k]);
+                                break;
+                        }
+                    } else {
+                        strcpy(part, tokens->tokens[k]);
+                    }
+                    
+                    strcat(result_buf, part);
+                }
+                
+                strcpy(result, result_buf);
+            }
+            else {
+                strcpy(result, value);
+            }
+            
+            printf("%-15s\n", result);
+            match_count++;
+        }
+    } else {
+        char value[256] = "";
+        strcpy(value, arg);
+        
+        char result[512] = "";
+        
+        if (strcmp(func_name, "UPPER") == 0) {
+            strcpy(result, value);
+            to_upper(result);
+        }
+        else if (strcmp(func_name, "LOWER") == 0) {
+            strcpy(result, value);
+            for (int k = 0; result[k]; k++) {
+                result[k] = tolower((unsigned char)result[k]);
+            }
+        }
+        else if (strcmp(func_name, "LENGTH") == 0) {
+            snprintf(result, sizeof(result), "%zu", strlen(value));
+        }
+        else if (strcmp(func_name, "TRIM") == 0) {
+            char *start = value;
+            while (*start == ' ' || *start == '\t') start++;
+            strcpy(result, start);
+            int len = strlen(result);
+            while (len > 0 && (result[len-1] == ' ' || result[len-1] == '\t')) {
+                result[len-1] = '\0';
+                len--;
+            }
+        }
+        else if (strcmp(func_name, "SUBSTR") == 0 || strcmp(func_name, "SUBSTRING") == 0) {
+            int len = strlen(value);
+            int start = substr_start - 1;
+            if (start < 0) start = len + start;
+            if (start < 0) start = 0;
+            if (start > len) start = len;
+            
+            int end = start + substr_len;
+            if (substr_len == 0) end = len;
+            if (end > len) end = len;
+            
+            int k = 0;
+            for (int j = start; j < end && k < 255; j++) {
+                result[k++] = value[j];
+            }
+            result[k] = '\0';
+        }
+        else if (strcmp(func_name, "CONCAT") == 0) {
+            char result_buf[512] = "";
+            
+            for (int k = arg_start; k < tokens->count; k++) {
+                if (strcmp(tokens->tokens[k], ")") == 0) break;
+                if (strcmp(tokens->tokens[k], ",") == 0) continue;
+                
+                strcat(result_buf, tokens->tokens[k]);
+            }
+            
+            strcpy(result, result_buf);
+        }
+        else {
+            strcpy(result, value);
+        }
+        
+        printf("%-15s\n", result);
+        match_count++;
+    }
+    
+    printf("(%d row%s)\n", match_count, match_count == 1 ? "" : "s");
+    return 0;
+}
+static int handle_math_function(TokenList *tokens) {
+    // SELECT ABS(-5)
+    // SELECT ROUND(3.14159)
+    // SELECT ROUND(3.14159, 2)
+    // SELECT FLOOR(3.9)
+    // SELECT CEIL(3.1)
+    // SELECT MOD(10, 3)
+    
+    if (tokens->count < 3) return -1;
+    
+    char func_name[32];
+    strcpy(func_name, tokens->tokens[1]);
+    to_upper(func_name);
+    
+    char *paren = strchr(func_name, '(');
+    if (paren) *paren = '\0';
+    
+    // Extract first argument
+    int arg_start = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0) {
+            arg_start = i + 1;
+            break;
+        }
+    }
+    
+    if (arg_start == -1 || arg_start >= tokens->count) {
+        printf("ERROR: Invalid function syntax\n");
+        return -1;
+    }
+    
+    double value = atof(tokens->tokens[arg_start]);
+    
+    // For ROUND with 2 args
+    int decimals = 0;
+    if (strcmp(func_name, "ROUND") == 0 && arg_start + 2 < tokens->count) {
+        if (strcmp(tokens->tokens[arg_start + 2], ")") != 0) {
+            decimals = atoi(tokens->tokens[arg_start + 2]);
+        }
+    }
+    
+    // For MOD
+    double value2 = 0;
+    if (strcmp(func_name, "MOD") == 0 && arg_start + 2 < tokens->count) {
+        value2 = atof(tokens->tokens[arg_start + 2]);
+    }
+    
+    printf("result\n");
+    printf("------\n");
+    
+    double result = 0;
+    
+    if (strcmp(func_name, "ABS") == 0) {
+        result = value < 0 ? -value : value;
+        printf("%-15.4f\n", result);
+    }
+    else if (strcmp(func_name, "ROUND") == 0) {
+        double multiplier = 1;
+        for (int i = 0; i < decimals; i++) multiplier *= 10;
+        result = (double)((long long)(value * multiplier + 0.5)) / multiplier;
+        printf("%-15.*f\n", decimals, result);
+    }
+    else if (strcmp(func_name, "FLOOR") == 0) {
+        result = (double)(long long)value;
+        if (value < 0 && value != (double)(long long)value) result -= 1;
+        printf("%-15.0f\n", result);
+    }
+    else if (strcmp(func_name, "CEIL") == 0 || strcmp(func_name, "CEILING") == 0) {
+        result = (double)(long long)value;
+        if (value > 0 && value != (double)(long long)value) result += 1;
+        printf("%-15.0f\n", result);
+    }
+    else if (strcmp(func_name, "MOD") == 0) {
+        if (value2 != 0) {
+            result = (double)((long long)value % (long long)value2);
+            printf("%-15.0f\n", result);
+        } else {
+            printf("ERROR: Division by zero\n");
+        }
+    }
+    else {
+        printf("ERROR: Unknown math function '%s'\n", func_name);
+        return -1;
+    }
+    
+    printf("(1 row)\n");
+    return 0;
+}
+
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -3067,6 +3435,35 @@ int sql_execute(const char *sql) {
     // CTEs (WITH) — must be checked first
     if (strcmp(command, "WITH") == 0) {
         return handle_cte(&list);
+    }
+    
+    // String functions
+    if (strcmp(command, "SELECT") == 0 && list.count > 1) {
+        char first_word[MAX_TOKEN_LEN];
+        strcpy(first_word, list.tokens[1]);
+        to_upper(first_word);
+        
+        char *paren = strchr(first_word, '(');
+        if (paren) *paren = '\0';
+        
+        if (strcmp(first_word, "UPPER") == 0 ||
+            strcmp(first_word, "LOWER") == 0 ||
+            strcmp(first_word, "LENGTH") == 0 ||
+            strcmp(first_word, "TRIM") == 0 ||
+            strcmp(first_word, "SUBSTR") == 0 ||
+            strcmp(first_word, "SUBSTRING") == 0 ||
+            strcmp(first_word, "CONCAT") == 0) {
+            return handle_string_function(&list);
+        }
+        
+        if (strcmp(first_word, "ABS") == 0 ||
+            strcmp(first_word, "ROUND") == 0 ||
+            strcmp(first_word, "FLOOR") == 0 ||
+            strcmp(first_word, "CEIL") == 0 ||
+            strcmp(first_word, "CEILING") == 0 ||
+            strcmp(first_word, "MOD") == 0) {
+            return handle_math_function(&list);
+        }
     }
     
     if (strcmp(command, "BEGIN") == 0) {
@@ -3238,7 +3635,7 @@ int sql_execute(const char *sql) {
             return handle_limit(&list);
         }
         
-        // HAVING (must come before GROUP BY)
+        // HAVING
         int has_having = 0;
         for (int i = 0; i < list.count; i++) {
             if (strcmp(list.tokens[i], "HAVING") == 0) {
