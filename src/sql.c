@@ -1457,6 +1457,12 @@ static int handle_alter_table(TokenList *tokens) {
             type = TYPE_INTEGER;
         } else if (strcmp(col_type, "TEXT") == 0 || strcmp(col_type, "STRING") == 0) {
             type = TYPE_TEXT;
+        } else if (strcmp(col_type, "UUID") == 0) {
+            type = TYPE_UUID;
+        } else if (strcmp(col_type, "JSON") == 0) {
+            type = TYPE_JSON;
+        } else if (strcmp(col_type, "BOOLEAN") == 0 || strcmp(col_type, "BOOL") == 0) {
+            type = TYPE_BOOLEAN;
         } else if (strcmp(col_type, "FLOAT") == 0 || strcmp(col_type, "DOUBLE") == 0) {
             type = TYPE_FLOAT;
         } else {
@@ -1464,10 +1470,59 @@ static int handle_alter_table(TokenList *tokens) {
             return -1;
         }
         
-        if (table_add_column(table, col_name, type) == 0) {
-            sql_save();
-            printf("OK. Added column '%s'\n", col_name);
+        if (table->column_count >= MAX_COLUMNS) {
+            printf("ERROR: Too many columns\n");
+            return -1;
         }
+        
+        if (table_add_column(table, col_name, type) != 0) {
+            printf("ERROR: Failed to add column\n");
+            return -1;
+        }
+        
+        int new_col_idx = table->column_count - 1;
+        
+        // Grow each existing row to include the new column
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **old_row = (void**)table->rows[r];
+            void **new_row = (void**)malloc(table->column_count * sizeof(void*));
+            
+            // Copy old values
+            for (int c = 0; c < new_col_idx; c++) {
+                new_row[c] = old_row[c];
+            }
+            
+            // Add default value for the new column
+            switch (type) {
+                case TYPE_INTEGER:
+                case TYPE_BOOLEAN: {
+                    int *val = (int*)malloc(sizeof(int));
+                    *val = 0;
+                    new_row[new_col_idx] = val;
+                    break;
+                }
+                case TYPE_FLOAT: {
+                    double *val = (double*)malloc(sizeof(double));
+                    *val = 0.0;
+                    new_row[new_col_idx] = val;
+                    break;
+                }
+                case TYPE_TEXT:
+                case TYPE_UUID:
+                case TYPE_JSON: {
+                    char *val = (char*)malloc(1);
+                    val[0] = '\0';
+                    new_row[new_col_idx] = val;
+                    break;
+                }
+            }
+            
+            free(old_row);
+            table->rows[r] = new_row;
+        }
+        
+        sql_save();
+        printf("OK. Added column '%s'\n", col_name);
     }
     else if (strcmp(tokens->tokens[3], "DROP") == 0) {
         if (tokens->count < 5) return -1;
@@ -1481,10 +1536,26 @@ static int handle_alter_table(TokenList *tokens) {
             return -1;
         }
         
+        // Free the values in this column and shift remaining columns
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **old_row = (void**)table->rows[r];
+            
+            free(old_row[col_idx]);
+            
+            for (int c = col_idx; c < table->column_count - 1; c++) {
+                old_row[c] = old_row[c + 1];
+            }
+            
+            void **new_row = (void**)realloc(old_row, (table->column_count - 1) * sizeof(void*));
+            table->rows[r] = new_row;
+        }
+        
+        // Shift column definitions
         for (int c = col_idx; c < table->column_count - 1; c++) {
             table->columns[c] = table->columns[c + 1];
         }
         table->column_count--;
+        
         sql_save();
         printf("OK. Dropped column '%s'\n", col_name);
     }
