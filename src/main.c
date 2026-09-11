@@ -86,12 +86,14 @@ static void run_benchmark(Database *db, int operations) {
     printf("  Memory: Extremely fast (Hash Map)\n");
     printf("  Disk: Optimized with Group Commit\n");
     printf("  Buffer Size: 100 writes per flush\n\n");
+    fflush(stdout);
 }
 
 static void run_shell(void) {
     sql_init();
     printf("HeavenDB Interactive Shell\n");
     printf("Type SQL commands or 'exit' to quit.\n\n");
+    fflush(stdout);
     
     char input[1024];
     while (1) {
@@ -107,11 +109,13 @@ static void run_shell(void) {
         
         if (strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0) {
             printf("Bye!\n");
+            fflush(stdout);
             break;
         }
         
         if (strlen(input) > 0) {
             sql_execute(input);
+            fflush(stdout);
         }
     }
     
@@ -122,11 +126,13 @@ static void run_sql_file(const char *filename) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
         printf("ERROR: Cannot open file '%s'\n", filename);
+        fflush(stdout);
         return;
     }
     
     printf("Executing SQL script: %s\n", filename);
     printf("========================================\n\n");
+    fflush(stdout);
     
     char line[2048];
     int line_num = 0;
@@ -142,12 +148,14 @@ static void run_sql_file(const char *filename) {
             len--;
         }
         
-        // Skip empty lines and comments
         if (len == 0) continue;
         if (line[0] == '-' && line[1] == '-') continue;
         
         printf("[Line %d] %s\n", line_num, line);
+        fflush(stdout);
+        
         int result = sql_execute(line);
+        fflush(stdout);
         
         if (result == 0) {
             success_count++;
@@ -156,6 +164,7 @@ static void run_sql_file(const char *filename) {
         }
         
         printf("\n");
+        fflush(stdout);
     }
     
     fclose(fp);
@@ -164,21 +173,25 @@ static void run_sql_file(const char *filename) {
     printf("Script complete!\n");
     printf("  Commands executed: %d\n", success_count);
     printf("  Errors: %d\n", error_count);
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_usage();
+        fflush(stdout);
         return 1;
     }
     
     if (strcmp(argv[1], "help") == 0) {
         print_usage();
+        fflush(stdout);
         return 0;
     }
     
     if (strcmp(argv[1], "shell") == 0) {
         run_shell();
+        fflush(stdout);
         return 0;
     }
     
@@ -193,34 +206,40 @@ int main(int argc, char *argv[]) {
         tcp_server_start(port);
         http_server_stop();
         sql_shutdown();
+        fflush(stdout);
         return 0;
     }
     
     if (strcmp(argv[1], "sql") == 0) {
         if (argc != 3) {
             printf("Usage: heavendb sql \"<SQL query>\"\n");
+            fflush(stdout);
             return 1;
         }
         sql_init();
         sql_execute(argv[2]);
         sql_shutdown();
+        fflush(stdout);
         return 0;
     }
     
     if (strcmp(argv[1], "run") == 0) {
         if (argc != 3) {
             printf("Usage: heavendb run <file.sql>\n");
+            fflush(stdout);
             return 1;
         }
         sql_init();
         run_sql_file(argv[2]);
         sql_shutdown();
+        fflush(stdout);
         return 0;
     }
     
     Database *db = db_open(DB_FILE);
     if (!db) {
         fprintf(stderr, "ERROR: Failed to open database\n");
+        fflush(stdout);
         return 1;
     }
     
@@ -228,6 +247,7 @@ int main(int argc, char *argv[]) {
         if (argc != 4) {
             printf("Usage: heavendb set <key> <value>\n");
             db_close(db);
+            fflush(stdout);
             return 1;
         }
         if (db_set(db, argv[2], argv[3], strlen(argv[3])) == 0) {
@@ -240,6 +260,7 @@ int main(int argc, char *argv[]) {
         if (argc != 3) {
             printf("Usage: heavendb get <key>\n");
             db_close(db);
+            fflush(stdout);
             return 1;
         }
         size_t value_len;
@@ -254,6 +275,7 @@ int main(int argc, char *argv[]) {
         if (argc != 3) {
             printf("Usage: heavendb delete <key>\n");
             db_close(db);
+            fflush(stdout);
             return 1;
         }
         if (db_delete(db, argv[2]) == 0) {
@@ -276,12 +298,14 @@ int main(int argc, char *argv[]) {
         if (argc != 3) {
             printf("Usage: heavendb benchmark <operations>\n");
             db_close(db);
+            fflush(stdout);
             return 1;
         }
         int ops = atoi(argv[2]);
         if (ops <= 0) {
             printf("ERROR: Operations must be positive\n");
             db_close(db);
+            fflush(stdout);
             return 1;
         }
         run_benchmark(db, ops);
@@ -292,5 +316,6 @@ int main(int argc, char *argv[]) {
     }
     
     db_close(db);
+    fflush(stdout);
     return 0;
 }

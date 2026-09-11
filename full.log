@@ -1,0 +1,678 @@
+Auth system loaded. 2 user(s) registered.
+HeavenDB SQL Engine initialized.
+Executing SQL script: test.sql
+========================================
+
+[Line 8] LOGIN admin WITH PASSWORD 'admin123'
+OK. Logged in as 'admin'
+
+[Line 9] CREATE USER testuser WITH PASSWORD 'Test1234'
+ERROR: User 'testuser' already exists
+
+[Line 10] LOGOUT
+OK. Logged out 'admin'
+
+[Line 15] DROP TABLE users
+OK. Dropped table 'users'
+
+[Line 16] DROP TABLE orders
+OK. Dropped table 'orders'
+
+[Line 17] DROP TABLE admins
+OK. Dropped table 'admins'
+
+[Line 19] CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, age INTEGER, active BOOLEAN, data JSON)
+OK. Created table 'users'
+
+[Line 20] CREATE TABLE orders (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER REFERENCES users(id), total INTEGER)
+OK. Created table 'orders'
+
+[Line 21] CREATE TABLE admins (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, level INTEGER)
+OK. Created table 'admins'
+
+[Line 26] INSERT INTO users VALUES (NULL, 'Aditya', 25, TRUE, '{"city":"Mumbai"}')
+OK. Inserted 1 row
+
+[Line 27] INSERT INTO users VALUES (NULL, 'Rahul', 19, FALSE, '{"city":"Delhi"}')
+OK. Inserted 1 row
+
+[Line 28] INSERT INTO users VALUES (NULL, 'Priya', 30, TRUE, '{"city":"Bangalore"}')
+OK. Inserted 1 row
+
+[Line 29] INSERT INTO users VALUES (NULL, 'Test', 25, TRUE, '{"city":"Pune"}')
+OK. Inserted 1 row
+
+[Line 30] INSERT INTO users VALUES (NULL, 'Test2', 30, FALSE, '{"city":"Chennai"}')
+OK. Inserted 1 row
+
+[Line 31] INSERT INTO orders VALUES (NULL, 1, 500)
+OK. Inserted 1 row
+
+[Line 32] INSERT INTO orders VALUES (NULL, 2, 750)
+OK. Inserted 1 row
+
+[Line 33] INSERT INTO orders VALUES (NULL, 99, 999)
+OK. Inserted 1 row
+
+[Line 34] INSERT INTO admins VALUES (NULL, 'SuperAdmin', 1)
+OK. Inserted 1 row
+
+[Line 39] SELECT * FROM users
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(5 rows)
+
+
+[Line 40] SELECT name, age FROM users
+name            age             
+--------------- --------------- 
+Aditya          25              
+Rahul           19              
+Priya           30              
+Test            25              
+Test2           30              
+(5 rows)
+
+
+[Line 41] SELECT name, age, active FROM users
+name            age             active          
+--------------- --------------- --------------- 
+Aditya          25              TRUE            
+Rahul           19              FALSE           
+Priya           30              TRUE            
+Test            25              TRUE            
+Test2           30              FALSE           
+(5 rows)
+
+
+[Line 46] SELECT * FROM users WHERE age = 25
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+4               Test            25              TRUE            {"city":"Pune"}                
+(2 rows)
+
+
+[Line 47] SELECT * FROM users WHERE age != 25
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(3 rows)
+
+
+[Line 48] SELECT * FROM users WHERE age <> 25
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(3 rows)
+
+
+[Line 49] SELECT * FROM users WHERE age > 20
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(4 rows)
+
+
+[Line 50] SELECT * FROM users WHERE age < 30
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+4               Test            25              TRUE            {"city":"Pune"}                
+(3 rows)
+
+
+[Line 51] SELECT * FROM users WHERE age >= 25
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(4 rows)
+
+
+[Line 52] SELECT * FROM users WHERE age <= 25
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+4               Test            25              TRUE            {"city":"Pune"}                
+(3 rows)
+
+
+[Line 53] SELECT * FROM users WHERE name = 'Aditya'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+(1 row)
+
+
+[Line 54] SELECT * FROM users WHERE active = TRUE
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+(3 rows)
+
+
+[Line 55] SELECT * FROM users WHERE active = FALSE
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(2 rows)
+
+
+[Line 60] SELECT * FROM users WHERE age > 20 AND age < 30
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+4               Test            25              TRUE            {"city":"Pune"}                
+(2 rows)
+
+
+[Line 61] SELECT * FROM users WHERE name = 'Aditya' OR name = 'Priya'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+(2 rows)
+
+
+[Line 62] SELECT * FROM users WHERE age > 20 AND active = TRUE
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+(3 rows)
+
+
+[Line 67] SELECT * FROM users ORDER BY age ASC
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+4               Test            25              TRUE            {"city":"Pune"}                
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+5               Test2           30              FALSE           {"city":"Chennai"}             
+(5 rows)
+
+[Line 68] SELECT * FROM users ORDER BY age DESC
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+5               Test2           30              FALSE           {"city":"Chennai"}             
+4               Test            25              TRUE            {"city":"Pune"}                
+1               Aditya          25              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+(5 rows)
+
+[Line 73] SELECT * FROM users LIMIT 2
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              
+5               Test2           30              
+(2 rows)
+
+[Line 74] SELECT * FROM users LIMIT 2 OFFSET 2
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+4               Test            25              
+1               Aditya          25              
+(2 rows)
+
+[Line 79] SELECT DISTINCT age FROM users
+age            
+---            
+30             
+25             
+19             
+
+[Line 84] SELECT COUNT(*) FROM users
+COUNT: 5
+
+[Line 85] SELECT SUM(age) FROM users
+SUM(age): 129
+
+[Line 86] SELECT AVG(age) FROM users
+AVG(age): 25.80
+
+[Line 87] SELECT MIN(age) FROM users
+MIN(age): 19
+
+[Line 88] SELECT MAX(age) FROM users
+MAX(age): 30
+
+[Line 89] SELECT GROUP_CONCAT(name) FROM users
+GROUP_CONCAT(name)
+----------------------------------------
+Priya,Test2,Test,Aditya,Rahul
+(1 row)
+
+[Line 94] SELECT age, COUNT(*) FROM users GROUP BY age
+age             COUNT     
+---             ---       
+30              2         
+25              2         
+19              1         
+
+[Line 95] SELECT age, GROUP_CONCAT(name) FROM users GROUP BY age
+age             GROUP_CONCAT                            
+--------------- ----------------------------------------
+30              Priya,Test2                             
+25              Test,Aditya                             
+19              Rahul                                   
+
+[Line 96] SELECT age, COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1
+age             COUNT     
+---             ---       
+30              2         
+25              2         
+
+[Line 101] SELECT * FROM users WHERE name LIKE 'Adi%'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              
+(1 rows)
+
+[Line 102] SELECT * FROM users WHERE name LIKE 'Test%'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+5               Test2           30              
+4               Test            25              
+(2 rows)
+
+[Line 103] SELECT * FROM users WHERE age BETWEEN 20 AND 30
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              
+5               Test2           30              
+4               Test            25              
+1               Aditya          25              
+(4 rows)
+
+[Line 104] SELECT * FROM users WHERE age IN (25, 30)
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              
+5               Test2           30              
+4               Test            25              
+1               Aditya          25              
+(4 rows)
+
+[Line 109] SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id
+id              name            age             active          data            id              user_id         
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              1               1               
+2               Rahul           19              2               2               
+(2 rows)
+
+
+[Line 110] SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id
+id              name            age             active          data            id              user_id         
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              NULL            NULL            
+5               Test2           30              NULL            NULL            
+4               Test            25              NULL            NULL            
+1               Aditya          25              1               1               
+2               Rahul           19              2               2               
+(5 rows)
+
+
+[Line 111] SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id
+id              name            age             active          data            id              user_id         
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          25              TRUE            {"city":"Mumbai"}              1               1               
+2               Rahul           19              FALSE           {"city":"Delhi"}               2               2               
+NULL            NULL            NULL            NULL            NULL            3               99              
+(3 rows)
+
+
+[Line 112] SELECT * FROM users FULL JOIN orders ON users.id = orders.user_id
+id              name            age             active          data            id              user_id         
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           NULL            NULL            
+5               Test2           30              FALSE           {"city":"Chennai"}             NULL            NULL            
+4               Test            25              TRUE            {"city":"Pune"}                NULL            NULL            
+1               Aditya          25              TRUE            {"city":"Mumbai"}              1               1               
+2               Rahul           19              FALSE           {"city":"Delhi"}               2               2               
+NULL            NULL            NULL            NULL            NULL            3               99              
+(6 rows)
+
+
+[Line 113] SELECT * FROM users CROSS JOIN orders
+id              name            age             active          data            id              user_id         
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           1               1               
+3               Priya           30              TRUE            {"city":"Bangalore"}           2               2               
+3               Priya           30              TRUE            {"city":"Bangalore"}           3               99              
+5               Test2           30              FALSE           {"city":"Chennai"}             1               1               
+5               Test2           30              FALSE           {"city":"Chennai"}             2               2               
+5               Test2           30              FALSE           {"city":"Chennai"}             3               99              
+4               Test            25              TRUE            {"city":"Pune"}                1               1               
+4               Test            25              TRUE            {"city":"Pune"}                2               2               
+4               Test            25              TRUE            {"city":"Pune"}                3               99              
+1               Aditya          25              TRUE            {"city":"Mumbai"}              1               1               
+1               Aditya          25              TRUE            {"city":"Mumbai"}              2               2               
+1               Aditya          25              TRUE            {"city":"Mumbai"}              3               99              
+2               Rahul           19              FALSE           {"city":"Delhi"}               1               1               
+2               Rahul           19              FALSE           {"city":"Delhi"}               2               2               
+2               Rahul           19              FALSE           {"city":"Delhi"}               3               99              
+(15 rows)
+
+
+[Line 118] SELECT name FROM users UNION SELECT name FROM admins
+name           
+---------------
+Priya          
+Test2          
+Test           
+Aditya         
+Rahul          
+SuperAdmin     
+
+(6 rows)
+
+[Line 119] SELECT name FROM users UNION ALL SELECT name FROM admins
+name           
+---------------
+Priya          
+Test2          
+Test           
+Aditya         
+Rahul          
+SuperAdmin     
+
+(6 rows)
+
+[Line 124] SELECT UPPER('hello')
+result
+------
+HELLO          
+(1 row)
+
+[Line 125] SELECT LOWER('HELLO')
+result
+------
+hello          
+(1 row)
+
+[Line 126] SELECT LENGTH('hello')
+result
+------
+5              
+(1 row)
+
+[Line 127] SELECT TRIM('  spaces  ')
+result
+------
+spaces         
+(1 row)
+
+[Line 128] SELECT SUBSTR('Hello World', 1, 5)
+result
+------
+Hello          
+(1 row)
+
+[Line 129] SELECT CONCAT('Hello', ' ', 'World')
+result
+------
+Hello World    
+(1 row)
+
+[Line 130] SELECT UPPER(name) FROM users
+result
+------
+PRIYA          
+TEST2          
+TEST           
+ADITYA         
+RAHUL          
+(5 rows)
+
+[Line 131] SELECT LOWER(name) FROM users
+result
+------
+priya          
+test2          
+test           
+aditya         
+rahul          
+(5 rows)
+
+[Line 132] SELECT LENGTH(name) FROM users
+result
+------
+5              
+5              
+4              
+6              
+5              
+(5 rows)
+
+[Line 133] SELECT CONCAT('Mr. ', name, ' - Age: ', age) FROM users
+result
+------
+Mr. Priya - Age: 30
+Mr. Test2 - Age: 30
+Mr. Test - Age: 25
+Mr. Aditya - Age: 25
+Mr. Rahul - Age: 19
+(5 rows)
+
+[Line 138] SELECT ABS(-5)
+result
+------
+5.0000         
+(1 row)
+
+[Line 139] SELECT ROUND(3.14159)
+result
+------
+3              
+(1 row)
+
+[Line 140] SELECT ROUND(3.14159, 2)
+result
+------
+3.14           
+(1 row)
+
+[Line 141] SELECT FLOOR(3.9)
+result
+------
+3              
+(1 row)
+
+[Line 142] SELECT CEIL(3.1)
+result
+------
+4              
+(1 row)
+
+[Line 143] SELECT MOD(10, 3)
+result
+------
+1              
+(1 row)
+
+[Line 148] UPDATE users SET age = 26 WHERE id = 1
+OK. Updated 1 row
+
+[Line 149] UPDATE users SET name = 'Aditya Kumar' WHERE id = 1
+OK. Updated 1 row
+
+[Line 150] SELECT * FROM users WHERE id = 1
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+1               Aditya Kumar    26              TRUE            {"city":"Mumbai"}              
+(1 row)
+
+
+[Line 151] UPDATE users SET active = FALSE WHERE id = 2
+OK. Updated 1 row
+
+[Line 152] SELECT * FROM users WHERE id = 2
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+(1 row)
+
+
+[Line 157] DELETE FROM users WHERE id = 5
+OK. Deleted 1 row
+
+[Line 158] SELECT * FROM users
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+1               Aditya Kumar    26              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+(4 rows)
+
+
+[Line 159] DELETE FROM admins WHERE id = 1
+OK. Deleted 1 row
+
+[Line 160] SELECT * FROM admins
+id              name            level           
+--------------- --------------- --------------- 
+(0 rows)
+
+
+[Line 165] BEGIN
+OK. Transaction started
+
+[Line 166] INSERT INTO users VALUES (NULL, 'TransactionTest', 99, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 167] COMMIT
+OK. Transaction committed
+
+[Line 168] SELECT * FROM users WHERE name = 'TransactionTest'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+6               TransactionTest 99              TRUE            {}                             
+(1 row)
+
+
+[Line 170] BEGIN
+OK. Transaction started
+
+[Line 171] INSERT INTO users VALUES (NULL, 'RollbackTest', 88, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 172] ROLLBACK
+OK. Transaction rolled back
+
+[Line 173] SELECT * FROM users WHERE name = 'RollbackTest'
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+
+[Line 178] CREATE VIEW adult_users AS SELECT * FROM users WHERE age >= 18
+OK. Created view 'adult_users'
+
+[Line 179] SELECT * FROM adult_users
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+1               Aditya Kumar    26              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+6               TransactionTest 99              TRUE            {}                             
+(5 rows)
+
+
+[Line 180] DROP VIEW adult_users
+OK. Dropped view 'adult_users'
+
+[Line 181] CREATE VIEW young_users AS SELECT * FROM users WHERE age < 18
+OK. Created view 'young_users'
+
+[Line 182] SELECT * FROM young_users
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+
+[Line 183] DROP VIEW young_users
+OK. Dropped view 'young_users'
+
+[Line 188] CREATE INDEX idx_age ON users(age)
+OK. Index already exists on 'users.age'
+
+[Line 189] CREATE INDEX idx_name ON users(name)
+OK. Index 'idx_name' registered (non-integer column, no B-Tree)
+
+[Line 194] SHOW TABLES
+Table Name                     Columns   
+------------------------------ -------   
+users                          5         
+orders                         2         
+admins                         3         
+
+(3 tables)
+
+[Line 195] DESCRIBE users
+Table: users
+Column               Type         Null       Key       
+------               ----         ----       ---       
+id                   INTEGER      NOT NULL   PRIMARY   
+name                 TEXT         NOT NULL             
+age                  INTEGER      YES                  
+active               UNKNOWN      YES                  
+data                 JSON         YES                  
+
+(5 columns)
+
+[Line 196] EXPLAIN SELECT * FROM users WHERE age > 18
+Query Plan:
+-----------
+  Table: users
+  Rows: 5
+  Columns: 5
+  Filter: WHERE clause detected
+  Index: B-Tree on INTEGER columns
+  Strategy: Index scan (O(log n))
+
+[Line 201] BACKUP TO 'test_backup.hdb'
+OK. Backup saved to 'test_backup.hdb'
+
+[Line 206] SELECT * FROM users
+id              name            age             active          data            
+--------------- --------------- --------------- --------------- --------------- 
+3               Priya           30              TRUE            {"city":"Bangalore"}           
+4               Test            25              TRUE            {"city":"Pune"}                
+1               Aditya Kumar    26              TRUE            {"city":"Mumbai"}              
+2               Rahul           19              FALSE           {"city":"Delhi"}               
+6               TransactionTest 99              TRUE            {}                             
+(5 rows)
+
+
+[Line 207] SELECT COUNT(*) FROM users
+COUNT: 5
+
+========================================
+Script complete!
+  Commands executed: 106
+  Errors: 0
