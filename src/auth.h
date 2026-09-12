@@ -38,4 +38,7 @@ const char *auth_current_user(AuthSystem *auth);
 int auth_validate_password(const char *password);
 void auth_destroy(AuthSystem *auth);
 
+// NEW: Random password generation
+void auth_generate_random_password(char *output, int length);
+
 #endif // HEAVENDB_AUTH_H

@@ -28,41 +28,50 @@ static void print_usage(void) {
 }
 
 static void run_benchmark(Database *db, int operations) {
-    printf("Running benchmark: %d operations...\n\n", operations);
+    printf("HeavenDB Benchmark\n");
+    printf("==================\n\n");
     
-    printf("Phase 1: In-Memory GET Benchmark\n");
-    printf("----------------------------------\n");
+    printf("Test 1: In-Memory GET at various working set sizes\n");
+    printf("---------------------------------------------------\n");
     
-    for (int i = 0; i < 1000; i++) {
-        char key[32];
-        char value[64];
-        snprintf(key, sizeof(key), "bench_key_%d", i);
-        snprintf(value, sizeof(value), "bench_value_%d", i);
-        hashmap_set(db->memory, key, value, strlen(value));
+    int sizes[] = {100, 1000, 10000, 100000, 1000000};
+    int num_sizes = 5;
+    
+    for (int s = 0; s < num_sizes; s++) {
+        int n = sizes[s];
+        
+        for (int i = 0; i < n; i++) {
+            char key[32];
+            char value[64];
+            snprintf(key, sizeof(key), "bench_key_%d", i);
+            snprintf(value, sizeof(value), "bench_value_%d", i);
+            hashmap_set(db->memory, key, value, strlen(value));
+        }
+        
+        int lookups = 100000;
+        clock_t start = clock();
+        
+        for (int i = 0; i < lookups; i++) {
+            char key[32];
+            snprintf(key, sizeof(key), "bench_key_%d", i % n);
+            size_t value_len;
+            hashmap_get(db->memory, key, &value_len);
+        }
+        
+        clock_t end = clock();
+        double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
+        double ops_per_sec = lookups / elapsed;
+        
+        printf("  %-8d keys  |  %10.0f ops/sec  |  %.3f sec for %d lookups\n",
+               n, ops_per_sec, elapsed, lookups);
     }
     
-    clock_t start = clock();
-    
-    for (int i = 0; i < operations; i++) {
-        char key[32];
-        snprintf(key, sizeof(key), "bench_key_%d", i % 1000);
-        size_t value_len;
-        hashmap_get(db->memory, key, &value_len);
-    }
-    
-    clock_t end = clock();
-    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
-    double ops_per_sec = operations / elapsed;
-    
-    printf("  Operations: %d\n", operations);
-    printf("  Time: %.3f seconds\n", elapsed);
-    printf("  Throughput: %.0f ops/sec\n\n", ops_per_sec);
-    
-    printf("Phase 2: Disk SET Benchmark (Group Commit)\n");
-    printf("------------------------------------------\n");
+    printf("\n");
+    printf("Test 2: Disk SET (Group Commit)\n");
+    printf("--------------------------------\n");
     
     int disk_ops = operations / 10;
-    start = clock();
+    clock_t start = clock();
     
     for (int i = 0; i < disk_ops; i++) {
         char key[32];
@@ -74,18 +83,18 @@ static void run_benchmark(Database *db, int operations) {
     
     db_flush(db);
     
-    end = clock();
-    elapsed = (double)(end - start) / CLOCKS_PER_SEC;
-    ops_per_sec = disk_ops / elapsed;
+    clock_t end = clock();
+    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
+    double ops_per_sec = disk_ops / elapsed;
     
     printf("  Operations: %d\n", disk_ops);
     printf("  Time: %.3f seconds\n", elapsed);
     printf("  Throughput: %.0f ops/sec\n\n", ops_per_sec);
     
-    printf("HeavenDB Performance Summary:\n");
-    printf("  Memory: Extremely fast (Hash Map)\n");
-    printf("  Disk: Optimized with Group Commit\n");
-    printf("  Buffer Size: 100 writes per flush\n\n");
+    printf("Interpretation:\n");
+    printf("  - Small working sets (100-10k keys) fit in L1/L2 cache -> fast\n");
+    printf("  - Large working sets (1M keys) cause cache misses -> slower\n");
+    printf("  - Real production workloads usually fall in the 100k-10M range\n\n");
     fflush(stdout);
 }
 

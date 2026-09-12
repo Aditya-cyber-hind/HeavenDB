@@ -1,426 +1,432 @@
-Auth system loaded. 2 user(s) registered.
+
++==========================================================+
+|           HeavenDB -- FIRST RUN SETUP                    |
++==========================================================+
+|  Username: admin                                         |
+|  Password: Cb37MP2qbDzLanohCw87MM^                       |
+|                                                          |
+|  !!! COPY THIS PASSWORD NOW -- it will NOT be shown !!!  |
+|      again. Change it immediately after first login:     |
+|                                                          |
+|      CHANGE PASSWORD 'YourNewSecure456'                  |
++==========================================================+
+|  Backup saved to: ~/.heavendb_initial_password           |
+|  (delete after copying)                                  |
++==========================================================+
+
+Auth system loaded. 1 user(s) registered.
 HeavenDB SQL Engine initialized.
 Executing SQL script: test3.sql
 ========================================
 
-[Line 9] DROP TABLE events
-ERROR: Table 'events' not found
+[Line 10] DROP TABLE IF EXISTS events
 
-[Line 10] DROP TABLE transactions
-ERROR: Table 'transactions' not found
+[Line 11] DROP TABLE IF EXISTS transactions
 
-[Line 11] DROP TABLE products
-ERROR: Table 'products' not found
+[Line 12] DROP TABLE IF EXISTS products
 
-[Line 12] DROP TABLE categories
-ERROR: Table 'categories' not found
+[Line 13] DROP TABLE IF EXISTS categories
 
-[Line 13] DROP TABLE customers
-ERROR: Table 'customers' not found
+[Line 14] DROP TABLE IF EXISTS customers
 
-[Line 14] DROP TABLE orders
-ERROR: Table 'orders' not found
+[Line 15] DROP TABLE IF EXISTS orders
 
-[Line 15] DROP TABLE employees
-ERROR: Table 'employees' not found
+[Line 16] DROP TABLE IF EXISTS employees
 
-[Line 16] DROP TABLE departments
-ERROR: Table 'departments' not found
+[Line 17] DROP TABLE IF EXISTS departments
 
-[Line 17] DROP TABLE audit_log
-ERROR: Table 'audit_log' not found
+[Line 18] DROP TABLE IF EXISTS audit_log
 
-[Line 18] DROP TABLE users
-ERROR: Table 'users' not found
+[Line 19] DROP TABLE IF EXISTS users
 
-[Line 20] CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, email TEXT, age INTEGER, salary FLOAT, is_active BOOLEAN, metadata JSON)
+[Line 21] CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, email TEXT, age INTEGER, salary FLOAT, is_active BOOLEAN, metadata JSON)
 OK. Created table 'users'
 
-[Line 21] CREATE TABLE employees (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, department_id INTEGER, salary FLOAT, hired_date DATE, active BOOLEAN)
+[Line 22] CREATE TABLE employees (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, department_id INTEGER, salary FLOAT, hired_date DATE, active BOOLEAN)
 OK. Created table 'employees'
 
-[Line 22] CREATE TABLE departments (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, budget FLOAT, location TEXT)
+[Line 23] CREATE TABLE departments (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, budget FLOAT, location TEXT)
 OK. Created table 'departments'
 
-[Line 23] CREATE TABLE orders (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, total FLOAT, status TEXT)
+[Line 24] CREATE TABLE orders (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, total FLOAT, status TEXT)
 OK. Created table 'orders'
 
-[Line 24] CREATE TABLE customers (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, city TEXT, tier TEXT, lifetime_value FLOAT)
+[Line 25] CREATE TABLE customers (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, city TEXT, tier TEXT, lifetime_value FLOAT)
 OK. Created table 'customers'
 
-[Line 25] CREATE TABLE categories (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, parent_id INTEGER)
+[Line 26] CREATE TABLE categories (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, parent_id INTEGER)
 OK. Created table 'categories'
 
-[Line 26] CREATE TABLE products (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, category_id INTEGER, price FLOAT, stock INTEGER, active BOOLEAN)
+[Line 27] CREATE TABLE products (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, category_id INTEGER, price FLOAT, stock INTEGER, active BOOLEAN)
 OK. Created table 'products'
 
-[Line 27] CREATE TABLE transactions (id INTEGER PRIMARY KEY AUTO_INCREMENT, product_id INTEGER, customer_id INTEGER, quantity INTEGER, total FLOAT, tx_date DATE)
+[Line 28] CREATE TABLE transactions (id INTEGER PRIMARY KEY AUTO_INCREMENT, product_id INTEGER, customer_id INTEGER, quantity INTEGER, total FLOAT, tx_date DATE)
 OK. Created table 'transactions'
 
-[Line 28] CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTO_INCREMENT, action TEXT, details JSON, ts TIMESTAMP)
+[Line 29] CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTO_INCREMENT, action TEXT, details JSON, ts TIMESTAMP)
 OK. Created table 'audit_log'
 
-[Line 29] CREATE TABLE events (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, event_date DATE, created_at TIMESTAMP)
+[Line 30] CREATE TABLE events (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, event_date DATE, created_at TIMESTAMP)
 OK. Created table 'events'
 
-[Line 34] INSERT INTO users VALUES (NULL, 'Aditya', 'aditya@heaven.db', 25, 85000.50, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
+[Line 35] INSERT INTO users VALUES (NULL, 'Aditya', 'aditya@heaven.db', 25, 85000.50, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 35] INSERT INTO users VALUES (NULL, 'Rahul', 'rahul@heaven.db', 19, 65000.75, TRUE, '{"role":"designer","level":2,"team":"design"}')
+[Line 36] INSERT INTO users VALUES (NULL, 'Rahul', 'rahul@heaven.db', 19, 65000.75, TRUE, '{"role":"designer","level":2,"team":"design"}')
 OK. Inserted 1 row
 
-[Line 36] INSERT INTO users VALUES (NULL, 'Priya', 'priya@heaven.db', 30, 95000.00, TRUE, '{"role":"manager","level":4,"team":"backend"}')
+[Line 37] INSERT INTO users VALUES (NULL, 'Priya', 'priya@heaven.db', 30, 95000.00, TRUE, '{"role":"manager","level":4,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 37] INSERT INTO users VALUES (NULL, 'Amit', 'amit@heaven.db', 45, 45000.25, FALSE, '{"role":"intern","level":1,"team":"backend"}')
+[Line 38] INSERT INTO users VALUES (NULL, 'Amit', 'amit@heaven.db', 45, 45000.25, FALSE, '{"role":"intern","level":1,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 38] INSERT INTO users VALUES (NULL, 'Sneha', 'sneha@heaven.db', 28, 75000.00, TRUE, '{"role":"engineer","level":3,"team":"frontend"}')
+[Line 39] INSERT INTO users VALUES (NULL, 'Sneha', 'sneha@heaven.db', 28, 75000.00, TRUE, '{"role":"engineer","level":3,"team":"frontend"}')
 OK. Inserted 1 row
 
-[Line 39] INSERT INTO users VALUES (NULL, 'Vikram', 'vikram@heaven.db', 35, 55000.50, TRUE, '{"role":"analyst","level":2,"team":"data"}')
+[Line 40] INSERT INTO users VALUES (NULL, 'Vikram', 'vikram@heaven.db', 35, 55000.50, TRUE, '{"role":"analyst","level":2,"team":"data"}')
 OK. Inserted 1 row
 
-[Line 40] INSERT INTO users VALUES (NULL, 'Neha', 'neha@heaven.db', 22, 48000.00, TRUE, '{"role":"engineer","level":2,"team":"frontend"}')
+[Line 41] INSERT INTO users VALUES (NULL, 'Neha', 'neha@heaven.db', 22, 48000.00, TRUE, '{"role":"engineer","level":2,"team":"frontend"}')
 OK. Inserted 1 row
 
-[Line 41] INSERT INTO users VALUES (NULL, 'Karan', 'karan@heaven.db', 40, 120000.00, TRUE, '{"role":"director","level":5,"team":"management"}')
+[Line 42] INSERT INTO users VALUES (NULL, 'Karan', 'karan@heaven.db', 40, 120000.00, TRUE, '{"role":"director","level":5,"team":"management"}')
 OK. Inserted 1 row
 
-[Line 42] INSERT INTO users VALUES (NULL, 'Ananya', 'ananya@heaven.db', 26, 72000.00, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
+[Line 43] INSERT INTO users VALUES (NULL, 'Ananya', 'ananya@heaven.db', 26, 72000.00, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 43] INSERT INTO users VALUES (NULL, 'Rohan', 'rohan@heaven.db', 32, 68000.00, TRUE, '{"role":"designer","level":3,"team":"design"}')
+[Line 44] INSERT INTO users VALUES (NULL, 'Rohan', 'rohan@heaven.db', 32, 68000.00, TRUE, '{"role":"designer","level":3,"team":"design"}')
 OK. Inserted 1 row
 
-[Line 44] INSERT INTO users VALUES (NULL, 'Divya', 'divya@heaven.db', 29, 81000.00, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
+[Line 45] INSERT INTO users VALUES (NULL, 'Divya', 'divya@heaven.db', 29, 81000.00, TRUE, '{"role":"engineer","level":3,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 45] INSERT INTO users VALUES (NULL, 'Arjun', 'arjun@heaven.db', 24, 58000.00, FALSE, '{"role":"analyst","level":2,"team":"data"}')
+[Line 46] INSERT INTO users VALUES (NULL, 'Arjun', 'arjun@heaven.db', 24, 58000.00, FALSE, '{"role":"analyst","level":2,"team":"data"}')
 OK. Inserted 1 row
 
-[Line 46] INSERT INTO users VALUES (NULL, 'Meera', 'meera@heaven.db', 31, 89000.00, TRUE, '{"role":"manager","level":4,"team":"frontend"}')
+[Line 47] INSERT INTO users VALUES (NULL, 'Meera', 'meera@heaven.db', 31, 89000.00, TRUE, '{"role":"manager","level":4,"team":"frontend"}')
 OK. Inserted 1 row
 
-[Line 47] INSERT INTO users VALUES (NULL, 'Rohit', 'rohit@heaven.db', 27, 63000.00, TRUE, '{"role":"engineer","level":2,"team":"backend"}')
+[Line 48] INSERT INTO users VALUES (NULL, 'Rohit', 'rohit@heaven.db', 27, 63000.00, TRUE, '{"role":"engineer","level":2,"team":"backend"}')
 OK. Inserted 1 row
 
-[Line 48] INSERT INTO users VALUES (NULL, 'Pooja', 'pooja@heaven.db', 33, 77000.00, TRUE, '{"role":"designer","level":3,"team":"design"}')
+[Line 49] INSERT INTO users VALUES (NULL, 'Pooja', 'pooja@heaven.db', 33, 77000.00, TRUE, '{"role":"designer","level":3,"team":"design"}')
 OK. Inserted 1 row
 
-[Line 53] INSERT INTO departments VALUES (NULL, 'Engineering', 500000.00, 'Bangalore')
+[Line 54] INSERT INTO departments VALUES (NULL, 'Engineering', 500000.00, 'Bangalore')
 OK. Inserted 1 row
 
-[Line 54] INSERT INTO departments VALUES (NULL, 'Design', 250000.00, 'Mumbai')
+[Line 55] INSERT INTO departments VALUES (NULL, 'Design', 250000.00, 'Mumbai')
 OK. Inserted 1 row
 
-[Line 55] INSERT INTO departments VALUES (NULL, 'Sales', 300000.00, 'Delhi')
+[Line 56] INSERT INTO departments VALUES (NULL, 'Sales', 300000.00, 'Delhi')
 OK. Inserted 1 row
 
-[Line 56] INSERT INTO departments VALUES (NULL, 'Marketing', 200000.00, 'Mumbai')
+[Line 57] INSERT INTO departments VALUES (NULL, 'Marketing', 200000.00, 'Mumbai')
 OK. Inserted 1 row
 
-[Line 57] INSERT INTO departments VALUES (NULL, 'HR', 150000.00, 'Bangalore')
+[Line 58] INSERT INTO departments VALUES (NULL, 'HR', 150000.00, 'Bangalore')
 OK. Inserted 1 row
 
-[Line 58] INSERT INTO departments VALUES (NULL, 'Finance', 180000.00, 'Delhi')
+[Line 59] INSERT INTO departments VALUES (NULL, 'Finance', 180000.00, 'Delhi')
 OK. Inserted 1 row
 
-[Line 59] INSERT INTO departments VALUES (NULL, 'Operations', 220000.00, 'Pune')
+[Line 60] INSERT INTO departments VALUES (NULL, 'Operations', 220000.00, 'Pune')
 OK. Inserted 1 row
 
-[Line 60] INSERT INTO departments VALUES (NULL, 'Research', 350000.00, 'Bangalore')
+[Line 61] INSERT INTO departments VALUES (NULL, 'Research', 350000.00, 'Bangalore')
 OK. Inserted 1 row
 
-[Line 61] INSERT INTO departments VALUES (NULL, 'Support', 160000.00, 'Chennai')
+[Line 62] INSERT INTO departments VALUES (NULL, 'Support', 160000.00, 'Chennai')
 OK. Inserted 1 row
 
-[Line 62] INSERT INTO departments VALUES (NULL, 'Legal', 140000.00, 'Delhi')
+[Line 63] INSERT INTO departments VALUES (NULL, 'Legal', 140000.00, 'Delhi')
 OK. Inserted 1 row
 
-[Line 67] INSERT INTO employees VALUES (NULL, 'Raj', 1, 90000.00, '2020-01-15', TRUE)
+[Line 68] INSERT INTO employees VALUES (NULL, 'Raj', 1, 90000.00, '2020-01-15', TRUE)
 OK. Inserted 1 row
 
-[Line 68] INSERT INTO employees VALUES (NULL, 'Simran', 1, 85000.00, '2021-03-20', TRUE)
+[Line 69] INSERT INTO employees VALUES (NULL, 'Simran', 1, 85000.00, '2021-03-20', TRUE)
 OK. Inserted 1 row
 
-[Line 69] INSERT INTO employees VALUES (NULL, 'Akash', 1, 95000.00, '2019-07-10', TRUE)
+[Line 70] INSERT INTO employees VALUES (NULL, 'Akash', 1, 95000.00, '2019-07-10', TRUE)
 OK. Inserted 1 row
 
-[Line 70] INSERT INTO employees VALUES (NULL, 'Riya', 2, 70000.00, '2022-05-12', TRUE)
+[Line 71] INSERT INTO employees VALUES (NULL, 'Riya', 2, 70000.00, '2022-05-12', TRUE)
 OK. Inserted 1 row
 
-[Line 71] INSERT INTO employees VALUES (NULL, 'Nikhil', 2, 75000.00, '2021-08-25', TRUE)
+[Line 72] INSERT INTO employees VALUES (NULL, 'Nikhil', 2, 75000.00, '2021-08-25', TRUE)
 OK. Inserted 1 row
 
-[Line 72] INSERT INTO employees VALUES (NULL, 'Tanvi', 3, 65000.00, '2023-01-05', TRUE)
+[Line 73] INSERT INTO employees VALUES (NULL, 'Tanvi', 3, 65000.00, '2023-01-05', TRUE)
 OK. Inserted 1 row
 
-[Line 73] INSERT INTO employees VALUES (NULL, 'Manav', 3, 68000.00, '2022-11-18', TRUE)
+[Line 74] INSERT INTO employees VALUES (NULL, 'Manav', 3, 68000.00, '2022-11-18', TRUE)
 OK. Inserted 1 row
 
-[Line 74] INSERT INTO employees VALUES (NULL, 'Isha', 4, 60000.00, '2023-02-28', FALSE)
+[Line 75] INSERT INTO employees VALUES (NULL, 'Isha', 4, 60000.00, '2023-02-28', FALSE)
 OK. Inserted 1 row
 
-[Line 75] INSERT INTO employees VALUES (NULL, 'Dev', 4, 62000.00, '2022-09-15', TRUE)
+[Line 76] INSERT INTO employees VALUES (NULL, 'Dev', 4, 62000.00, '2022-09-15', TRUE)
 OK. Inserted 1 row
 
-[Line 76] INSERT INTO employees VALUES (NULL, 'Sara', 5, 58000.00, '2023-04-10', TRUE)
+[Line 77] INSERT INTO employees VALUES (NULL, 'Sara', 5, 58000.00, '2023-04-10', TRUE)
 OK. Inserted 1 row
 
-[Line 77] INSERT INTO employees VALUES (NULL, 'Yash', 5, 55000.00, '2023-06-22', TRUE)
+[Line 78] INSERT INTO employees VALUES (NULL, 'Yash', 5, 55000.00, '2023-06-22', TRUE)
 OK. Inserted 1 row
 
-[Line 78] INSERT INTO employees VALUES (NULL, 'Diya', 6, 72000.00, '2021-12-01', TRUE)
+[Line 79] INSERT INTO employees VALUES (NULL, 'Diya', 6, 72000.00, '2021-12-01', TRUE)
 OK. Inserted 1 row
 
-[Line 79] INSERT INTO employees VALUES (NULL, 'Kabir', 7, 80000.00, '2020-10-30', TRUE)
+[Line 80] INSERT INTO employees VALUES (NULL, 'Kabir', 7, 80000.00, '2020-10-30', TRUE)
 OK. Inserted 1 row
 
-[Line 80] INSERT INTO employees VALUES (NULL, 'Naina', 8, 105000.00, '2018-05-15', TRUE)
+[Line 81] INSERT INTO employees VALUES (NULL, 'Naina', 8, 105000.00, '2018-05-15', TRUE)
 OK. Inserted 1 row
 
-[Line 81] INSERT INTO employees VALUES (NULL, 'Aryan', 8, 98000.00, '2019-11-20', TRUE)
+[Line 82] INSERT INTO employees VALUES (NULL, 'Aryan', 8, 98000.00, '2019-11-20', TRUE)
 OK. Inserted 1 row
 
-[Line 82] INSERT INTO employees VALUES (NULL, 'Zara', 9, 45000.00, '2023-07-01', TRUE)
+[Line 83] INSERT INTO employees VALUES (NULL, 'Zara', 9, 45000.00, '2023-07-01', TRUE)
 OK. Inserted 1 row
 
-[Line 83] INSERT INTO employees VALUES (NULL, 'Ishaan', 9, 48000.00, '2023-08-15', TRUE)
+[Line 84] INSERT INTO employees VALUES (NULL, 'Ishaan', 9, 48000.00, '2023-08-15', TRUE)
 OK. Inserted 1 row
 
-[Line 84] INSERT INTO employees VALUES (NULL, 'Kavya', 10, 65000.00, '2022-03-10', TRUE)
+[Line 85] INSERT INTO employees VALUES (NULL, 'Kavya', 10, 65000.00, '2022-03-10', TRUE)
 OK. Inserted 1 row
 
-[Line 85] INSERT INTO employees VALUES (NULL, 'Veer', 10, 68000.00, '2021-06-20', TRUE)
+[Line 86] INSERT INTO employees VALUES (NULL, 'Veer', 10, 68000.00, '2021-06-20', TRUE)
 OK. Inserted 1 row
 
-[Line 86] INSERT INTO employees VALUES (NULL, 'Aisha', 1, 110000.00, '2017-09-05', TRUE)
+[Line 87] INSERT INTO employees VALUES (NULL, 'Aisha', 1, 110000.00, '2017-09-05', TRUE)
 OK. Inserted 1 row
 
-[Line 91] INSERT INTO categories VALUES (NULL, 'Electronics', 0)
+[Line 92] INSERT INTO categories VALUES (NULL, 'Electronics', 0)
 OK. Inserted 1 row
 
-[Line 92] INSERT INTO categories VALUES (NULL, 'Computers', 1)
+[Line 93] INSERT INTO categories VALUES (NULL, 'Computers', 1)
 OK. Inserted 1 row
 
-[Line 93] INSERT INTO categories VALUES (NULL, 'Phones', 1)
+[Line 94] INSERT INTO categories VALUES (NULL, 'Phones', 1)
 OK. Inserted 1 row
 
-[Line 94] INSERT INTO categories VALUES (NULL, 'Clothing', 0)
+[Line 95] INSERT INTO categories VALUES (NULL, 'Clothing', 0)
 OK. Inserted 1 row
 
-[Line 95] INSERT INTO categories VALUES (NULL, 'Books', 0)
+[Line 96] INSERT INTO categories VALUES (NULL, 'Books', 0)
 OK. Inserted 1 row
 
-[Line 100] INSERT INTO products VALUES (NULL, 'Laptop Pro', 2, 85000.00, 50, TRUE)
+[Line 101] INSERT INTO products VALUES (NULL, 'Laptop Pro', 2, 85000.00, 50, TRUE)
 OK. Inserted 1 row
 
-[Line 101] INSERT INTO products VALUES (NULL, 'Laptop Air', 2, 65000.00, 75, TRUE)
+[Line 102] INSERT INTO products VALUES (NULL, 'Laptop Air', 2, 65000.00, 75, TRUE)
 OK. Inserted 1 row
 
-[Line 102] INSERT INTO products VALUES (NULL, 'Desktop Gaming', 2, 120000.00, 20, TRUE)
+[Line 103] INSERT INTO products VALUES (NULL, 'Desktop Gaming', 2, 120000.00, 20, TRUE)
 OK. Inserted 1 row
 
-[Line 103] INSERT INTO products VALUES (NULL, 'iPhone 15', 3, 80000.00, 100, TRUE)
+[Line 104] INSERT INTO products VALUES (NULL, 'iPhone 15', 3, 80000.00, 100, TRUE)
 OK. Inserted 1 row
 
-[Line 104] INSERT INTO products VALUES (NULL, 'Samsung S24', 3, 70000.00, 150, TRUE)
+[Line 105] INSERT INTO products VALUES (NULL, 'Samsung S24', 3, 70000.00, 150, TRUE)
 OK. Inserted 1 row
 
-[Line 105] INSERT INTO products VALUES (NULL, 'Pixel 8', 3, 60000.00, 80, TRUE)
+[Line 106] INSERT INTO products VALUES (NULL, 'Pixel 8', 3, 60000.00, 80, TRUE)
 OK. Inserted 1 row
 
-[Line 106] INSERT INTO products VALUES (NULL, 'T-Shirt Premium', 4, 1500.00, 500, TRUE)
+[Line 107] INSERT INTO products VALUES (NULL, 'T-Shirt Premium', 4, 1500.00, 500, TRUE)
 OK. Inserted 1 row
 
-[Line 107] INSERT INTO products VALUES (NULL, 'Jeans Classic', 4, 2500.00, 300, TRUE)
+[Line 108] INSERT INTO products VALUES (NULL, 'Jeans Classic', 4, 2500.00, 300, TRUE)
 OK. Inserted 1 row
 
-[Line 108] INSERT INTO products VALUES (NULL, 'Jacket Winter', 4, 5000.00, 100, FALSE)
+[Line 109] INSERT INTO products VALUES (NULL, 'Jacket Winter', 4, 5000.00, 100, FALSE)
 OK. Inserted 1 row
 
-[Line 109] INSERT INTO products VALUES (NULL, 'Python Book', 5, 800.00, 200, TRUE)
+[Line 110] INSERT INTO products VALUES (NULL, 'Python Book', 5, 800.00, 200, TRUE)
 OK. Inserted 1 row
 
-[Line 110] INSERT INTO products VALUES (NULL, 'C Programming', 5, 1200.00, 150, TRUE)
+[Line 111] INSERT INTO products VALUES (NULL, 'C Programming', 5, 1200.00, 150, TRUE)
 OK. Inserted 1 row
 
-[Line 111] INSERT INTO products VALUES (NULL, 'System Design', 5, 1500.00, 100, TRUE)
+[Line 112] INSERT INTO products VALUES (NULL, 'System Design', 5, 1500.00, 100, TRUE)
 OK. Inserted 1 row
 
-[Line 112] INSERT INTO products VALUES (NULL, 'Headphones Pro', 1, 25000.00, 60, TRUE)
+[Line 113] INSERT INTO products VALUES (NULL, 'Headphones Pro', 1, 25000.00, 60, TRUE)
 OK. Inserted 1 row
 
-[Line 113] INSERT INTO products VALUES (NULL, 'Smart Watch', 1, 35000.00, 40, TRUE)
+[Line 114] INSERT INTO products VALUES (NULL, 'Smart Watch', 1, 35000.00, 40, TRUE)
 OK. Inserted 1 row
 
-[Line 114] INSERT INTO products VALUES (NULL, 'Camera DSLR', 1, 95000.00, 15, TRUE)
+[Line 115] INSERT INTO products VALUES (NULL, 'Camera DSLR', 1, 95000.00, 15, TRUE)
 OK. Inserted 1 row
 
-[Line 119] INSERT INTO customers VALUES (NULL, 'Ramesh', 'Mumbai', 'Gold', 250000.00)
+[Line 120] INSERT INTO customers VALUES (NULL, 'Ramesh', 'Mumbai', 'Gold', 250000.00)
 OK. Inserted 1 row
 
-[Line 120] INSERT INTO customers VALUES (NULL, 'Suresh', 'Delhi', 'Silver', 120000.00)
+[Line 121] INSERT INTO customers VALUES (NULL, 'Suresh', 'Delhi', 'Silver', 120000.00)
 OK. Inserted 1 row
 
-[Line 121] INSERT INTO customers VALUES (NULL, 'Mahesh', 'Bangalore', 'Platinum', 500000.00)
+[Line 122] INSERT INTO customers VALUES (NULL, 'Mahesh', 'Bangalore', 'Platinum', 500000.00)
 OK. Inserted 1 row
 
-[Line 122] INSERT INTO customers VALUES (NULL, 'Dinesh', 'Pune', 'Gold', 180000.00)
+[Line 123] INSERT INTO customers VALUES (NULL, 'Dinesh', 'Pune', 'Gold', 180000.00)
 OK. Inserted 1 row
 
-[Line 123] INSERT INTO customers VALUES (NULL, 'Naresh', 'Chennai', 'Bronze', 45000.00)
+[Line 124] INSERT INTO customers VALUES (NULL, 'Naresh', 'Chennai', 'Bronze', 45000.00)
 OK. Inserted 1 row
 
-[Line 124] INSERT INTO customers VALUES (NULL, 'Krish', 'Mumbai', 'Platinum', 750000.00)
+[Line 125] INSERT INTO customers VALUES (NULL, 'Krish', 'Mumbai', 'Platinum', 750000.00)
 OK. Inserted 1 row
 
-[Line 125] INSERT INTO customers VALUES (NULL, 'Arun', 'Delhi', 'Gold', 220000.00)
+[Line 126] INSERT INTO customers VALUES (NULL, 'Arun', 'Delhi', 'Gold', 220000.00)
 OK. Inserted 1 row
 
-[Line 126] INSERT INTO customers VALUES (NULL, 'Varun', 'Bangalore', 'Silver', 95000.00)
+[Line 127] INSERT INTO customers VALUES (NULL, 'Varun', 'Bangalore', 'Silver', 95000.00)
 OK. Inserted 1 row
 
-[Line 127] INSERT INTO customers VALUES (NULL, 'Tarun', 'Pune', 'Bronze', 35000.00)
+[Line 128] INSERT INTO customers VALUES (NULL, 'Tarun', 'Pune', 'Bronze', 35000.00)
 OK. Inserted 1 row
 
-[Line 128] INSERT INTO customers VALUES (NULL, 'Karun', 'Chennai', 'Gold', 310000.00)
+[Line 129] INSERT INTO customers VALUES (NULL, 'Karun', 'Chennai', 'Gold', 310000.00)
 OK. Inserted 1 row
 
-[Line 133] INSERT INTO orders VALUES (NULL, 1, 5000.00, 'completed')
+[Line 134] INSERT INTO orders VALUES (NULL, 1, 5000.00, 'completed')
 OK. Inserted 1 row
 
-[Line 134] INSERT INTO orders VALUES (NULL, 1, 7500.00, 'completed')
+[Line 135] INSERT INTO orders VALUES (NULL, 1, 7500.00, 'completed')
 OK. Inserted 1 row
 
-[Line 135] INSERT INTO orders VALUES (NULL, 2, 3000.00, 'pending')
+[Line 136] INSERT INTO orders VALUES (NULL, 2, 3000.00, 'pending')
 OK. Inserted 1 row
 
-[Line 136] INSERT INTO orders VALUES (NULL, 3, 12000.00, 'completed')
+[Line 137] INSERT INTO orders VALUES (NULL, 3, 12000.00, 'completed')
 OK. Inserted 1 row
 
-[Line 137] INSERT INTO orders VALUES (NULL, 4, 4500.00, 'cancelled')
+[Line 138] INSERT INTO orders VALUES (NULL, 4, 4500.00, 'cancelled')
 OK. Inserted 1 row
 
-[Line 138] INSERT INTO orders VALUES (NULL, 5, 8900.00, 'completed')
+[Line 139] INSERT INTO orders VALUES (NULL, 5, 8900.00, 'completed')
 OK. Inserted 1 row
 
-[Line 139] INSERT INTO orders VALUES (NULL, 6, 2300.00, 'pending')
+[Line 140] INSERT INTO orders VALUES (NULL, 6, 2300.00, 'pending')
 OK. Inserted 1 row
 
-[Line 140] INSERT INTO orders VALUES (NULL, 7, 6700.00, 'completed')
+[Line 141] INSERT INTO orders VALUES (NULL, 7, 6700.00, 'completed')
 OK. Inserted 1 row
 
-[Line 141] INSERT INTO orders VALUES (NULL, 8, 15000.00, 'completed')
+[Line 142] INSERT INTO orders VALUES (NULL, 8, 15000.00, 'completed')
 OK. Inserted 1 row
 
-[Line 142] INSERT INTO orders VALUES (NULL, 9, 3200.00, 'pending')
+[Line 143] INSERT INTO orders VALUES (NULL, 9, 3200.00, 'pending')
 OK. Inserted 1 row
 
-[Line 143] INSERT INTO orders VALUES (NULL, 10, 5500.00, 'completed')
+[Line 144] INSERT INTO orders VALUES (NULL, 10, 5500.00, 'completed')
 OK. Inserted 1 row
 
-[Line 144] INSERT INTO orders VALUES (NULL, 11, 9100.00, 'cancelled')
+[Line 145] INSERT INTO orders VALUES (NULL, 11, 9100.00, 'cancelled')
 OK. Inserted 1 row
 
-[Line 145] INSERT INTO orders VALUES (NULL, 12, 4300.00, 'completed')
+[Line 146] INSERT INTO orders VALUES (NULL, 12, 4300.00, 'completed')
 OK. Inserted 1 row
 
-[Line 146] INSERT INTO orders VALUES (NULL, 13, 7800.00, 'pending')
+[Line 147] INSERT INTO orders VALUES (NULL, 13, 7800.00, 'pending')
 OK. Inserted 1 row
 
-[Line 147] INSERT INTO orders VALUES (NULL, 14, 2100.00, 'completed')
+[Line 148] INSERT INTO orders VALUES (NULL, 14, 2100.00, 'completed')
 OK. Inserted 1 row
 
-[Line 148] INSERT INTO orders VALUES (NULL, 15, 6400.00, 'completed')
+[Line 149] INSERT INTO orders VALUES (NULL, 15, 6400.00, 'completed')
 OK. Inserted 1 row
 
-[Line 153] INSERT INTO transactions VALUES (NULL, 1, 1, 2, 170000.00, '2026-01-15')
+[Line 154] INSERT INTO transactions VALUES (NULL, 1, 1, 2, 170000.00, '2026-01-15')
 OK. Inserted 1 row
 
-[Line 154] INSERT INTO transactions VALUES (NULL, 4, 2, 1, 80000.00, '2026-01-16')
+[Line 155] INSERT INTO transactions VALUES (NULL, 4, 2, 1, 80000.00, '2026-01-16')
 OK. Inserted 1 row
 
-[Line 155] INSERT INTO transactions VALUES (NULL, 7, 3, 5, 7500.00, '2026-01-17')
+[Line 156] INSERT INTO transactions VALUES (NULL, 7, 3, 5, 7500.00, '2026-01-17')
 OK. Inserted 1 row
 
-[Line 156] INSERT INTO transactions VALUES (NULL, 10, 4, 3, 2400.00, '2026-01-18')
+[Line 157] INSERT INTO transactions VALUES (NULL, 10, 4, 3, 2400.00, '2026-01-18')
 OK. Inserted 1 row
 
-[Line 157] INSERT INTO transactions VALUES (NULL, 13, 5, 2, 50000.00, '2026-01-19')
+[Line 158] INSERT INTO transactions VALUES (NULL, 13, 5, 2, 50000.00, '2026-01-19')
 OK. Inserted 1 row
 
-[Line 158] INSERT INTO transactions VALUES (NULL, 2, 6, 1, 65000.00, '2026-02-01')
+[Line 159] INSERT INTO transactions VALUES (NULL, 2, 6, 1, 65000.00, '2026-02-01')
 OK. Inserted 1 row
 
-[Line 159] INSERT INTO transactions VALUES (NULL, 5, 7, 2, 140000.00, '2026-02-02')
+[Line 160] INSERT INTO transactions VALUES (NULL, 5, 7, 2, 140000.00, '2026-02-02')
 OK. Inserted 1 row
 
-[Line 160] INSERT INTO transactions VALUES (NULL, 8, 8, 4, 10000.00, '2026-02-03')
+[Line 161] INSERT INTO transactions VALUES (NULL, 8, 8, 4, 10000.00, '2026-02-03')
 OK. Inserted 1 row
 
-[Line 161] INSERT INTO transactions VALUES (NULL, 11, 9, 5, 7500.00, '2026-02-04')
+[Line 162] INSERT INTO transactions VALUES (NULL, 11, 9, 5, 7500.00, '2026-02-04')
 OK. Inserted 1 row
 
-[Line 162] INSERT INTO transactions VALUES (NULL, 14, 10, 1, 35000.00, '2026-02-05')
+[Line 163] INSERT INTO transactions VALUES (NULL, 14, 10, 1, 35000.00, '2026-02-05')
 OK. Inserted 1 row
 
-[Line 163] INSERT INTO transactions VALUES (NULL, 3, 1, 1, 120000.00, '2026-02-10')
+[Line 164] INSERT INTO transactions VALUES (NULL, 3, 1, 1, 120000.00, '2026-02-10')
 OK. Inserted 1 row
 
-[Line 164] INSERT INTO transactions VALUES (NULL, 6, 2, 3, 180000.00, '2026-02-11')
+[Line 165] INSERT INTO transactions VALUES (NULL, 6, 2, 3, 180000.00, '2026-02-11')
 OK. Inserted 1 row
 
-[Line 165] INSERT INTO transactions VALUES (NULL, 9, 3, 2, 5000.00, '2026-02-12')
+[Line 166] INSERT INTO transactions VALUES (NULL, 9, 3, 2, 5000.00, '2026-02-12')
 OK. Inserted 1 row
 
-[Line 166] INSERT INTO transactions VALUES (NULL, 12, 4, 1, 1500.00, '2026-02-13')
+[Line 167] INSERT INTO transactions VALUES (NULL, 12, 4, 1, 1500.00, '2026-02-13')
 OK. Inserted 1 row
 
-[Line 167] INSERT INTO transactions VALUES (NULL, 15, 5, 1, 95000.00, '2026-02-14')
+[Line 168] INSERT INTO transactions VALUES (NULL, 15, 5, 1, 95000.00, '2026-02-14')
 OK. Inserted 1 row
 
-[Line 168] INSERT INTO transactions VALUES (NULL, 1, 6, 2, 170000.00, '2026-03-01')
+[Line 169] INSERT INTO transactions VALUES (NULL, 1, 6, 2, 170000.00, '2026-03-01')
 OK. Inserted 1 row
 
-[Line 169] INSERT INTO transactions VALUES (NULL, 4, 7, 3, 240000.00, '2026-03-02')
+[Line 170] INSERT INTO transactions VALUES (NULL, 4, 7, 3, 240000.00, '2026-03-02')
 OK. Inserted 1 row
 
-[Line 170] INSERT INTO transactions VALUES (NULL, 7, 8, 4, 6000.00, '2026-03-03')
+[Line 171] INSERT INTO transactions VALUES (NULL, 7, 8, 4, 6000.00, '2026-03-03')
 OK. Inserted 1 row
 
-[Line 171] INSERT INTO transactions VALUES (NULL, 10, 9, 5, 4000.00, '2026-03-04')
+[Line 172] INSERT INTO transactions VALUES (NULL, 10, 9, 5, 4000.00, '2026-03-04')
 OK. Inserted 1 row
 
-[Line 172] INSERT INTO transactions VALUES (NULL, 13, 10, 2, 50000.00, '2026-03-05')
+[Line 173] INSERT INTO transactions VALUES (NULL, 13, 10, 2, 50000.00, '2026-03-05')
 OK. Inserted 1 row
 
-[Line 177] INSERT INTO audit_log VALUES (NULL, 'CREATE_USER', '{"user":"admin","ip":"127.0.0.1"}', '2026-09-12 10:30:00')
+[Line 178] INSERT INTO audit_log VALUES (NULL, 'CREATE_USER', '{"user":"admin","ip":"127.0.0.1"}', '2026-09-12 10:30:00')
 OK. Inserted 1 row
 
-[Line 178] INSERT INTO audit_log VALUES (NULL, 'LOGIN', '{"user":"admin","success":true}', '2026-09-12 10:31:15')
+[Line 179] INSERT INTO audit_log VALUES (NULL, 'LOGIN', '{"user":"admin","success":true}', '2026-09-12 10:31:15')
 OK. Inserted 1 row
 
-[Line 179] INSERT INTO audit_log VALUES (NULL, 'BACKUP', '{"file":"stress_backup.hdb","size":"1MB"}', '2026-09-12 10:45:00')
+[Line 180] INSERT INTO audit_log VALUES (NULL, 'BACKUP', '{"file":"stress_backup.hdb","size":"1MB"}', '2026-09-12 10:45:00')
 OK. Inserted 1 row
 
-[Line 184] INSERT INTO events VALUES (NULL, 'Team Meeting', '2026-09-15', '2026-09-12 14:30:00')
+[Line 185] INSERT INTO events VALUES (NULL, 'Team Meeting', '2026-09-15', '2026-09-12 14:30:00')
 OK. Inserted 1 row
 
-[Line 185] INSERT INTO events VALUES (NULL, 'Product Launch', '2026-10-20', '2026-09-10 09:00:00')
+[Line 186] INSERT INTO events VALUES (NULL, 'Product Launch', '2026-10-20', '2026-09-10 09:00:00')
 OK. Inserted 1 row
 
-[Line 186] INSERT INTO events VALUES (NULL, 'Birthday Party', '2026-12-25', NOW())
+[Line 187] INSERT INTO events VALUES (NULL, 'Birthday Party', '2026-12-25', NOW())
 OK. Inserted 1 row
 
-[Line 187] INSERT INTO events VALUES (NULL, 'Conference', '2026-11-05', '2026-09-12 08:00:00')
+[Line 188] INSERT INTO events VALUES (NULL, 'Conference', '2026-11-05', '2026-09-12 08:00:00')
 OK. Inserted 1 row
 
-[Line 188] INSERT INTO events VALUES (NULL, 'Vacation', '2026-12-31', NOW())
+[Line 189] INSERT INTO events VALUES (NULL, 'Vacation', '2026-12-31', NOW())
 OK. Inserted 1 row
 
-[Line 193] SELECT * FROM users
+[Line 194] SELECT * FROM users
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 
@@ -441,7 +447,7 @@ id              name            email           age             salary          
 (15 rows)
 
 
-[Line 194] SELECT * FROM departments
+[Line 195] SELECT * FROM departments
 id              name            budget          location        
 --------------- --------------- --------------- --------------- 
 1               Engineering     500000.00       Bangalore       
@@ -457,7 +463,7 @@ id              name            budget          location
 (10 rows)
 
 
-[Line 195] SELECT * FROM employees
+[Line 196] SELECT * FROM employees
 id              name            department_id   salary          hired_date      active          
 --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Raj             1               90000.00        2020-01-15      TRUE            
@@ -483,7 +489,7 @@ id              name            department_id   salary          hired_date      
 (20 rows)
 
 
-[Line 196] SELECT * FROM categories
+[Line 197] SELECT * FROM categories
 id              name            parent_id       
 --------------- --------------- --------------- 
 1               Electronics     0               
@@ -494,7 +500,7 @@ id              name            parent_id
 (5 rows)
 
 
-[Line 197] SELECT * FROM products
+[Line 198] SELECT * FROM products
 id              name            category_id     price           stock           active          
 --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Laptop Pro      2               85000.00        50              TRUE            
@@ -515,7 +521,7 @@ id              name            category_id     price           stock           
 (15 rows)
 
 
-[Line 198] SELECT * FROM customers
+[Line 199] SELECT * FROM customers
 id              name            city            tier            lifetime_value  
 --------------- --------------- --------------- --------------- --------------- 
 1               Ramesh          Mumbai          Gold            250000.00       
@@ -531,7 +537,7 @@ id              name            city            tier            lifetime_value
 (10 rows)
 
 
-[Line 199] SELECT * FROM orders
+[Line 200] SELECT * FROM orders
 id              user_id         total           status          
 --------------- --------------- --------------- --------------- 
 1               1               5000.00         completed       
@@ -553,7 +559,7 @@ id              user_id         total           status
 (16 rows)
 
 
-[Line 200] SELECT * FROM transactions
+[Line 201] SELECT * FROM transactions
 id              product_id      customer_id     quantity        total           tx_date         
 --------------- --------------- --------------- --------------- --------------- --------------- 
 1               1               1               2               170000.00       2026-01-15      
@@ -579,7 +585,7 @@ id              product_id      customer_id     quantity        total           
 (20 rows)
 
 
-[Line 201] SELECT * FROM audit_log
+[Line 202] SELECT * FROM audit_log
 id              action          details         ts              
 --------------- --------------- --------------- --------------- 
 1               CREATE_USER     {"user":"admin","ip":"127.0.0.1"} 2026-09-12 10:30:00       
@@ -588,18 +594,18 @@ id              action          details         ts
 (3 rows)
 
 
-[Line 202] SELECT * FROM events
+[Line 203] SELECT * FROM events
 id              name            event_date      created_at      
 --------------- --------------- --------------- --------------- 
 1               Team Meeting    2026-09-15      2026-09-12 14:30:00       
 2               Product Launch  2026-10-20      2026-09-10 09:00:00       
-3               Birthday Party  2026-12-25      2026-09-12 13:22:41       
+3               Birthday Party  2026-12-25      2026-09-12 16:19:15       
 4               Conference      2026-11-05      2026-09-12 08:00:00       
-5               Vacation        2026-12-31      2026-09-12 13:22:41       
+5               Vacation        2026-12-31      2026-09-12 16:19:15       
 (5 rows)
 
 
-[Line 207] SELECT * FROM users WHERE age > 25
+[Line 208] SELECT * FROM users WHERE age > 25
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 3               Priya           priya@heaven.db 30              95000.00        TRUE            {"role":"manager","level":4,"team":"backend"} 
@@ -616,7 +622,7 @@ id              name            email           age             salary          
 (11 rows)
 
 
-[Line 208] SELECT * FROM users WHERE age < 25
+[Line 209] SELECT * FROM users WHERE age < 25
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 2               Rahul           rahul@heaven.db 19              65000.75        TRUE            {"role":"designer","level":2,"team":"design"} 
@@ -625,13 +631,13 @@ id              name            email           age             salary          
 (3 rows)
 
 
-[Line 209] SELECT * FROM users WHERE salary > 80000
+[Line 210] SELECT * FROM users WHERE salary > 80000
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
 
-[Line 210] SELECT * FROM users WHERE is_active = TRUE
+[Line 211] SELECT * FROM users WHERE is_active = TRUE
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 
@@ -650,7 +656,7 @@ id              name            email           age             salary          
 (13 rows)
 
 
-[Line 211] SELECT * FROM users WHERE is_active = FALSE
+[Line 212] SELECT * FROM users WHERE is_active = FALSE
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 
@@ -658,13 +664,13 @@ id              name            email           age             salary          
 (2 rows)
 
 
-[Line 216] SELECT * FROM users WHERE age > 20 AND salary > 70000
+[Line 217] SELECT * FROM users WHERE age > 20 AND salary > 70000
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
 
-[Line 217] SELECT * FROM users WHERE age < 25 OR salary > 100000
+[Line 218] SELECT * FROM users WHERE age < 25 OR salary > 100000
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 2               Rahul           rahul@heaven.db 19              65000.75        TRUE            {"role":"designer","level":2,"team":"design"} 
@@ -673,7 +679,7 @@ id              name            email           age             salary          
 (3 rows)
 
 
-[Line 222] SELECT name, salary FROM users ORDER BY salary ASC
+[Line 223] SELECT name, salary FROM users ORDER BY salary ASC
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 
@@ -693,7 +699,7 @@ id              name            email           age             salary          
 15              Pooja           pooja@heaven.db 33              77000.00        TRUE            {"role":"designer","level":3,"team":"design"} 
 (15 rows)
 
-[Line 223] SELECT name, salary FROM users ORDER BY salary DESC
+[Line 224] SELECT name, salary FROM users ORDER BY salary DESC
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 
@@ -713,7 +719,7 @@ id              name            email           age             salary          
 15              Pooja           pooja@heaven.db 33              77000.00        TRUE            {"role":"designer","level":3,"team":"design"} 
 (15 rows)
 
-[Line 224] SELECT name, age FROM users ORDER BY age DESC
+[Line 225] SELECT name, age FROM users ORDER BY age DESC
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 
@@ -733,7 +739,7 @@ id              name            email           age             salary          
 2               Rahul           rahul@heaven.db 19              65000.75        TRUE            {"role":"designer","level":2,"team":"design"} 
 (15 rows)
 
-[Line 229] SELECT * FROM users LIMIT 5
+[Line 230] SELECT * FROM users LIMIT 5
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        
@@ -743,7 +749,7 @@ id              name            email           age             salary          
 10              Rohan           rohan@heaven.db 32              68000.00        
 (5 rows)
 
-[Line 230] SELECT * FROM users LIMIT 5 OFFSET 5
+[Line 231] SELECT * FROM users LIMIT 5 OFFSET 5
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 13              Meera           meera@heaven.db 31              89000.00        
@@ -753,7 +759,7 @@ id              name            email           age             salary          
 14              Rohit           rohit@heaven.db 27              63000.00        
 (5 rows)
 
-[Line 235] SELECT DISTINCT age FROM users
+[Line 236] SELECT DISTINCT age FROM users
 age            
 ---            
 45             
@@ -772,62 +778,62 @@ age
 22             
 19             
 
-[Line 236] SELECT DISTINCT active FROM employees
+[Line 237] SELECT DISTINCT active FROM employees
 active         
 ---            
 1              
 0              
 
-[Line 241] SELECT COUNT(*) FROM users
+[Line 242] SELECT COUNT(*) FROM users
 COUNT: 15
 
-[Line 242] SELECT COUNT(*) FROM employees
+[Line 243] SELECT COUNT(*) FROM employees
 COUNT: 20
 
-[Line 243] SELECT COUNT(*) FROM products
+[Line 244] SELECT COUNT(*) FROM products
 COUNT: 15
 
-[Line 244] SELECT COUNT(*) FROM orders
+[Line 245] SELECT COUNT(*) FROM orders
 COUNT: 16
 
-[Line 245] SELECT COUNT(*) FROM transactions
+[Line 246] SELECT COUNT(*) FROM transactions
 COUNT: 20
 
-[Line 246] SELECT COUNT(*) FROM events
+[Line 247] SELECT COUNT(*) FROM events
 COUNT: 5
 
-[Line 247] SELECT SUM(salary) FROM users
+[Line 248] SELECT SUM(salary) FROM users
 SUM(salary): 0
 
-[Line 248] SELECT AVG(salary) FROM users
+[Line 249] SELECT AVG(salary) FROM users
 AVG(salary): 0
 
-[Line 249] SELECT MIN(salary) FROM users
+[Line 250] SELECT MIN(salary) FROM users
 MIN(salary): 0
 
-[Line 250] SELECT MAX(salary) FROM users
+[Line 251] SELECT MAX(salary) FROM users
 MAX(salary): 0
 
-[Line 251] SELECT GROUP_CONCAT(name) FROM users
+[Line 252] SELECT GROUP_CONCAT(name) FROM users
 GROUP_CONCAT(name)
 ----------------------------------------
 Amit,Karan,Vikram,Pooja,Rohan,Meera,Priya,Divya,Sneha,Rohit,Ananya,Aditya,Arjun,Neha,Rahul
 (1 row)
 
-[Line 256] SELECT is_active, COUNT(*) FROM users GROUP BY is_active
+[Line 257] SELECT is_active, COUNT(*) FROM users GROUP BY is_active
 is_active       COUNT     
 ---             ---       
 0               2         
 1               13        
 
-[Line 257] SELECT status, COUNT(*) FROM orders GROUP BY status
+[Line 258] SELECT status, COUNT(*) FROM orders GROUP BY status
 status          COUNT     
 ---             ---       
 1886220131      10        
 1684956528      4         
 1668178275      2         
 
-[Line 258] SELECT tier, COUNT(*) FROM customers GROUP BY tier
+[Line 259] SELECT tier, COUNT(*) FROM customers GROUP BY tier
 tier            COUNT     
 ---             ---       
 1684827975      4         
@@ -835,17 +841,17 @@ tier            COUNT
 1952541776      2         
 1852797506      2         
 
-[Line 259] SELECT age, COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1
+[Line 260] SELECT age, COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1
 age             COUNT     
 ---             ---       
 
-[Line 260] SELECT is_active, GROUP_CONCAT(name) FROM users GROUP BY is_active
+[Line 261] SELECT is_active, GROUP_CONCAT(name) FROM users GROUP BY is_active
 is_active       GROUP_CONCAT                            
 --------------- ----------------------------------------
 0               Amit,Arjun                              
 1               Karan,Vikram,Pooja,Rohan,Meera,Priya,Divya,Sneha,Rohit,Ananya,Aditya,Neha,Rahul
 
-[Line 265] SELECT * FROM users WHERE name LIKE 'A%'
+[Line 266] SELECT * FROM users WHERE name LIKE 'A%'
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        
@@ -854,7 +860,7 @@ id              name            email           age             salary          
 12              Arjun           arjun@heaven.db 24              58000.00        
 (4 rows)
 
-[Line 266] SELECT * FROM users WHERE age BETWEEN 25 AND 35
+[Line 267] SELECT * FROM users WHERE age BETWEEN 25 AND 35
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 6               Vikram          vikram@heaven.db 35              55000.50        
@@ -869,7 +875,7 @@ id              name            email           age             salary          
 1               Aditya          aditya@heaven.db 25              85000.50        
 (10 rows)
 
-[Line 267] SELECT * FROM users WHERE id IN (1, 3, 5, 7, 9)
+[Line 268] SELECT * FROM users WHERE id IN (1, 3, 5, 7, 9)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 3               Priya           priya@heaven.db 30              95000.00        
@@ -879,12 +885,12 @@ id              name            email           age             salary          
 7               Neha            neha@heaven.db  22              48000.00        
 (5 rows)
 
-[Line 268] SELECT * FROM orders WHERE status IN ('completed', 'pending')
+[Line 269] SELECT * FROM orders WHERE status IN ('completed', 'pending')
 id              user_id         total           status          
 --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 273] SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id
+[Line 274] SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id
 id              name            email           age             salary          is_active       metadata        id              user_id         total           status          
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        5               4               4500.00         cancelled       
@@ -906,7 +912,7 @@ id              name            email           age             salary          
 (16 rows)
 
 
-[Line 274] SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id
+[Line 275] SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id
 id              name            email           age             salary          is_active       metadata        id              user_id         total           status          
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        5               4               4500.00         cancelled       
@@ -928,7 +934,7 @@ id              name            email           age             salary          
 (16 rows)
 
 
-[Line 275] SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id
+[Line 276] SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id
 id              name            email           age             salary          is_active       metadata        id              user_id         total           status          
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 1               1               5000.00         completed       
@@ -950,7 +956,7 @@ id              name            email           age             salary          
 (16 rows)
 
 
-[Line 276] SELECT * FROM users FULL JOIN orders ON users.id = orders.user_id
+[Line 277] SELECT * FROM users FULL JOIN orders ON users.id = orders.user_id
 id              name            email           age             salary          is_active       metadata        id              user_id         total           status          
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 5               4               4500.00         cancelled       
@@ -972,7 +978,7 @@ id              name            email           age             salary          
 (16 rows)
 
 
-[Line 277] SELECT * FROM employees INNER JOIN departments ON employees.department_id = departments.id
+[Line 278] SELECT * FROM employees INNER JOIN departments ON employees.department_id = departments.id
 id              name            department_id   salary          hired_date      active          id              name            budget          location        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Raj             1               90000.00        1               Engineering     500000.00       Bangalore       
@@ -998,7 +1004,7 @@ id              name            department_id   salary          hired_date      
 (20 rows)
 
 
-[Line 282] SELECT * FROM users CROSS JOIN orders
+[Line 283] SELECT * FROM users CROSS JOIN orders
 id              name            email           age             salary          is_active       metadata        id              user_id         total           status          
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 1               1               5000.00         completed       
@@ -1244,7 +1250,7 @@ id              name            email           age             salary          
 (240 rows)
 
 
-[Line 283] SELECT name FROM users UNION SELECT name FROM employees
+[Line 284] SELECT name FROM users UNION SELECT name FROM employees
 name           
 ---------------
 Amit           
@@ -1285,7 +1291,7 @@ Aisha
 
 (35 rows)
 
-[Line 284] SELECT name FROM users UNION ALL SELECT name FROM customers
+[Line 285] SELECT name FROM users UNION ALL SELECT name FROM customers
 name           
 ---------------
 Amit           
@@ -1316,7 +1322,7 @@ Karun
 
 (25 rows)
 
-[Line 289] SELECT UPPER(name) FROM users
+[Line 290] SELECT UPPER(name) FROM users
 result
 ------
 AMIT           
@@ -1336,7 +1342,7 @@ NEHA
 RAHUL          
 (15 rows)
 
-[Line 290] SELECT LOWER(name) FROM users
+[Line 291] SELECT LOWER(name) FROM users
 result
 ------
 amit           
@@ -1356,7 +1362,7 @@ neha
 rahul          
 (15 rows)
 
-[Line 291] SELECT LENGTH(name) FROM users
+[Line 292] SELECT LENGTH(name) FROM users
 result
 ------
 4              
@@ -1376,19 +1382,19 @@ result
 5              
 (15 rows)
 
-[Line 292] SELECT TRIM('   hello   ')
+[Line 293] SELECT TRIM('   hello   ')
 result
 ------
 hello          
 (1 row)
 
-[Line 293] SELECT SUBSTR('HeavenDB is awesome', 1, 8)
+[Line 294] SELECT SUBSTR('HeavenDB is awesome', 1, 8)
 result
 ------
 HeavenDB       
 (1 row)
 
-[Line 294] SELECT CONCAT('User: ', name, ' - Salary: ', salary) FROM users
+[Line 295] SELECT CONCAT('User: ', name, ' - Salary: ', salary) FROM users
 result
 ------
 User: Amit - Salary: 45000.25
@@ -1408,7 +1414,7 @@ User: Neha - Salary: 48000.00
 User: Rahul - Salary: 65000.75
 (15 rows)
 
-[Line 295] SELECT UPPER(CONCAT(name, ' from ', email)) FROM users
+[Line 296] SELECT UPPER(CONCAT(name, ' from ', email)) FROM users
 result
 ------
 AMIT FROM AMIT@HEAVEN.DB
@@ -1428,37 +1434,37 @@ NEHA FROM NEHA@HEAVEN.DB
 RAHUL FROM RAHUL@HEAVEN.DB
 (15 rows)
 
-[Line 300] SELECT ABS(-12345)
+[Line 301] SELECT ABS(-12345)
 result
 ------
 12345.0000     
 (1 row)
 
-[Line 301] SELECT ROUND(3.14159, 2)
+[Line 302] SELECT ROUND(3.14159, 2)
 result
 ------
 3.14           
 (1 row)
 
-[Line 302] SELECT FLOOR(99.999)
+[Line 303] SELECT FLOOR(99.999)
 result
 ------
 99             
 (1 row)
 
-[Line 303] SELECT CEIL(0.001)
+[Line 304] SELECT CEIL(0.001)
 result
 ------
 1              
 (1 row)
 
-[Line 304] SELECT MOD(1000, 13)
+[Line 305] SELECT MOD(1000, 13)
 result
 ------
 12             
 (1 row)
 
-[Line 309] SELECT name, CASE WHEN salary > 80000 THEN 'high' ELSE 'normal' END FROM users
+[Line 310] SELECT name, CASE WHEN salary > 80000 THEN 'high' ELSE 'normal' END FROM users
 name            category       
 --------------- ---------------
 Amit            normal         
@@ -1478,7 +1484,7 @@ Neha            normal
 Rahul           normal         
 (15 rows)
 
-[Line 310] SELECT name, CASE WHEN age < 25 THEN 'young' ELSE 'adult' END FROM users
+[Line 311] SELECT name, CASE WHEN age < 25 THEN 'young' ELSE 'adult' END FROM users
 name            category       
 --------------- ---------------
 Amit            adult          
@@ -1498,7 +1504,7 @@ Neha            young
 Rahul           young          
 (15 rows)
 
-[Line 315] SELECT * FROM users WHERE EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
+[Line 316] SELECT * FROM users WHERE EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 
@@ -1518,12 +1524,12 @@ id              name            email           age             salary          
 2               Rahul           rahul@heaven.db 19              65000.75        TRUE            {"role":"designer","level":2,"team":"design"} 
 (15 rows)
 
-[Line 316] SELECT * FROM users WHERE NOT EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
+[Line 317] SELECT * FROM users WHERE NOT EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 321] SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users)
+[Line 322] SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 
@@ -1535,33 +1541,33 @@ id              name            email           age             salary          
 3               Priya           priya@heaven.db 30              95000.00        TRUE            {"role":"manager","level":4,"team":"backend"} 
 (7 rows)
 
-[Line 322] SELECT * FROM users WHERE age = (SELECT MAX(age) FROM users)
+[Line 323] SELECT * FROM users WHERE age = (SELECT MAX(age) FROM users)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 4               Amit            amit@heaven.db  45              45000.25        FALSE           {"role":"intern","level":1,"team":"backend"} 
 (1 rows)
 
-[Line 323] SELECT * FROM employees WHERE salary > (SELECT AVG(salary) FROM employees)
+[Line 324] SELECT * FROM employees WHERE salary > (SELECT AVG(salary) FROM employees)
 id              name            department_id   salary          hired_date      active          
 --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 324] SELECT * FROM products WHERE price > (SELECT AVG(price) FROM products)
+[Line 325] SELECT * FROM products WHERE price > (SELECT AVG(price) FROM products)
 id              name            category_id     price           stock           active          
 --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 329] SELECT * FROM users WHERE salary > ANY (SELECT salary FROM employees)
+[Line 330] SELECT * FROM users WHERE salary > ANY (SELECT salary FROM employees)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 330] SELECT * FROM users WHERE salary > ALL (SELECT salary FROM employees)
+[Line 331] SELECT * FROM users WHERE salary > ALL (SELECT salary FROM employees)
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 335] SELECT json_extract(metadata, 'role') FROM users
+[Line 336] SELECT json_extract(metadata, 'role') FROM users
 result
 ------
 intern         
@@ -1581,7 +1587,7 @@ engineer
 designer       
 (15 rows)
 
-[Line 336] SELECT json_extract(metadata, 'level') FROM users
+[Line 337] SELECT json_extract(metadata, 'level') FROM users
 result
 ------
 1              
@@ -1601,7 +1607,7 @@ result
 2              
 (15 rows)
 
-[Line 337] SELECT json_extract(metadata, 'team') FROM users
+[Line 338] SELECT json_extract(metadata, 'team') FROM users
 result
 ------
 backend        
@@ -1621,7 +1627,7 @@ frontend
 design         
 (15 rows)
 
-[Line 338] SELECT json_set(metadata, 'role', 'manager') FROM users
+[Line 339] SELECT json_set(metadata, 'role', 'manager') FROM users
 result
 ------
 {"role":"manager","level":1,"team":"backend"}
@@ -1641,7 +1647,7 @@ result
 {"role":"manager","level":2,"team":"design"}
 (15 rows)
 
-[Line 339] SELECT json_set(metadata, 'level', '9') FROM users
+[Line 340] SELECT json_set(metadata, 'level', '9') FROM users
 result
 ------
 {"role":"intern","level":9,"team":"backend"}
@@ -1661,41 +1667,41 @@ result
 {"role":"designer","level":9,"team":"design"}
 (15 rows)
 
-[Line 344] SELECT NOW()
+[Line 345] SELECT NOW()
 result
 ------
-2026-09-12 13:22:41      
+2026-09-12 16:19:15      
 (1 row)
 
-[Line 345] SELECT CURRENT_DATE()
+[Line 346] SELECT CURRENT_DATE()
 result
 ------
 2026-09-12     
 (1 row)
 
-[Line 346] SELECT * FROM events
+[Line 347] SELECT * FROM events
 id              name            event_date      created_at      
 --------------- --------------- --------------- --------------- 
 1               Team Meeting    2026-09-15      2026-09-12 14:30:00       
 2               Product Launch  2026-10-20      2026-09-10 09:00:00       
-3               Birthday Party  2026-12-25      2026-09-12 13:22:41       
+3               Birthday Party  2026-12-25      2026-09-12 16:19:15       
 4               Conference      2026-11-05      2026-09-12 08:00:00       
-5               Vacation        2026-12-31      2026-09-12 13:22:41       
+5               Vacation        2026-12-31      2026-09-12 16:19:15       
 (5 rows)
 
 
-[Line 347] SELECT * FROM events WHERE event_date > '2026-10-01'
+[Line 348] SELECT * FROM events WHERE event_date > '2026-10-01'
 id              name            event_date      created_at      
 --------------- --------------- --------------- --------------- 
 (0 rows)
 
 
-[Line 348] SELECT * FROM events WHERE event_date BETWEEN '2026-09-01' AND '2026-11-30'
+[Line 349] SELECT * FROM events WHERE event_date BETWEEN '2026-09-01' AND '2026-11-30'
 id              name            event_date      created_at      
 --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 349] SELECT YEAR(event_date) FROM events
+[Line 350] SELECT YEAR(event_date) FROM events
 result
 ------
 2026           
@@ -1705,7 +1711,7 @@ result
 2026           
 (5 rows)
 
-[Line 350] SELECT MONTH(event_date) FROM events
+[Line 351] SELECT MONTH(event_date) FROM events
 result
 ------
 9              
@@ -1715,7 +1721,7 @@ result
 12             
 (5 rows)
 
-[Line 351] SELECT DAY(event_date) FROM events
+[Line 352] SELECT DAY(event_date) FROM events
 result
 ------
 15             
@@ -1725,7 +1731,7 @@ result
 31             
 (5 rows)
 
-[Line 352] SELECT YEAR(hired_date) FROM employees
+[Line 353] SELECT YEAR(hired_date) FROM employees
 result
 ------
 2020           
@@ -1750,7 +1756,7 @@ result
 2017           
 (20 rows)
 
-[Line 353] SELECT MONTH(hired_date) FROM employees
+[Line 354] SELECT MONTH(hired_date) FROM employees
 result
 ------
 1              
@@ -1775,138 +1781,138 @@ result
 9              
 (20 rows)
 
-[Line 358] BEGIN
+[Line 359] BEGIN
 OK. Transaction started
 
-[Line 359] INSERT INTO users VALUES (NULL, 'StressUser1', 'stress1@test.com', 99, 1000.00, TRUE, '{}')
+[Line 360] INSERT INTO users VALUES (NULL, 'StressUser1', 'stress1@test.com', 99, 1000.00, TRUE, '{}')
 OK. Inserted 1 row (pending commit)
 
-[Line 360] COMMIT
+[Line 361] COMMIT
 OK. Transaction committed
 
-[Line 362] BEGIN
+[Line 363] BEGIN
 OK. Transaction started
 
-[Line 363] INSERT INTO users VALUES (NULL, 'RollbackUser', 'rollback@test.com', 97, 3000.00, TRUE, '{}')
+[Line 364] INSERT INTO users VALUES (NULL, 'RollbackUser', 'rollback@test.com', 97, 3000.00, TRUE, '{}')
 OK. Inserted 1 row (pending commit)
 
-[Line 364] ROLLBACK
+[Line 365] ROLLBACK
 OK. Transaction rolled back
 
-[Line 366] SELECT * FROM users WHERE name LIKE 'Stress%'
+[Line 367] SELECT * FROM users WHERE name LIKE 'Stress%'
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 16              StressUser1     stress1@test.com 99              1000.00         
 (1 rows)
 
-[Line 367] SELECT * FROM users WHERE name LIKE 'Rollback%'
+[Line 368] SELECT * FROM users WHERE name LIKE 'Rollback%'
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 (0 rows)
 
-[Line 372] BEGIN
+[Line 373] BEGIN
 OK. Transaction started
 
-[Line 373] INSERT INTO users VALUES (NULL, 'SP_User1', 'sp1@test.com', 100, 100.00, TRUE, '{}')
+[Line 374] INSERT INTO users VALUES (NULL, 'SP_User1', 'sp1@test.com', 100, 100.00, TRUE, '{}')
 OK. Inserted 1 row (pending commit)
 
-[Line 374] SAVEPOINT checkpoint
+[Line 375] SAVEPOINT checkpoint
 OK. Savepoint 'checkpoint' created
 
-[Line 375] INSERT INTO users VALUES (NULL, 'SP_User2', 'sp2@test.com', 101, 200.00, TRUE, '{}')
+[Line 376] INSERT INTO users VALUES (NULL, 'SP_User2', 'sp2@test.com', 101, 200.00, TRUE, '{}')
 OK. Inserted 1 row (pending commit)
 
-[Line 376] ROLLBACK TO SAVEPOINT checkpoint
+[Line 377] ROLLBACK TO SAVEPOINT checkpoint
 OK. Rolled back to savepoint 'checkpoint'
 
-[Line 377] COMMIT
+[Line 378] COMMIT
 OK. Transaction committed
 
-[Line 379] SELECT * FROM users WHERE name LIKE 'SP_%'
+[Line 380] SELECT * FROM users WHERE name LIKE 'SP_%'
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 18              SP_User1        sp1@test.com    100             100.00          
 (1 rows)
 
-[Line 384] CREATE VIEW high_earners AS SELECT name, salary FROM users WHERE salary > 70000
+[Line 385] CREATE VIEW high_earners AS SELECT name, salary FROM users WHERE salary > 70000
 OK. Created view 'high_earners'
 
-[Line 385] SELECT * FROM high_earners
+[Line 386] SELECT * FROM high_earners
 name            salary          
 --------------- --------------- 
 (0 rows)
 
 
-[Line 386] CREATE VIEW upcoming_events AS SELECT name, event_date FROM events WHERE event_date > '2026-09-15'
+[Line 387] CREATE VIEW upcoming_events AS SELECT name, event_date FROM events WHERE event_date > '2026-09-15'
 OK. Created view 'upcoming_events'
 
-[Line 387] SELECT * FROM upcoming_events
+[Line 388] SELECT * FROM upcoming_events
 name            event_date      
 --------------- --------------- 
 (0 rows)
 
 
-[Line 388] DROP VIEW upcoming_events
+[Line 389] DROP VIEW upcoming_events
 OK. Dropped view 'upcoming_events'
 
-[Line 389] DROP VIEW high_earners
+[Line 390] DROP VIEW high_earners
 OK. Dropped view 'high_earners'
 
-[Line 394] ALTER TABLE users ADD COLUMN phone TEXT
+[Line 395] ALTER TABLE users ADD COLUMN phone TEXT
 OK. Added column 'phone'
 
-[Line 395] SELECT * FROM users WHERE id = 1
+[Line 396] SELECT * FROM users WHERE id = 1
 id              name            email           age             salary          is_active       metadata        phone           
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"}                 
 (1 row)
 
 
-[Line 396] ALTER TABLE users DROP COLUMN phone
+[Line 397] ALTER TABLE users DROP COLUMN phone
 OK. Dropped column 'phone'
 
-[Line 397] SELECT * FROM users WHERE id = 1
+[Line 398] SELECT * FROM users WHERE id = 1
 id              name            email           age             salary          is_active       metadata        
 --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
 1               Aditya          aditya@heaven.db 25              85000.50        TRUE            {"role":"engineer","level":3,"team":"backend"} 
 (1 row)
 
 
-[Line 402] UPDATE users SET salary = 90000.00 WHERE id = 1
+[Line 403] UPDATE users SET salary = 90000.00 WHERE id = 1
 OK. Updated 1 row
 
-[Line 403] UPDATE users SET is_active = FALSE WHERE id = 4
+[Line 404] UPDATE users SET is_active = FALSE WHERE id = 4
 OK. Updated 1 row
 
-[Line 404] UPDATE employees SET active = FALSE WHERE department_id = 5
+[Line 405] UPDATE employees SET active = FALSE WHERE department_id = 5
 OK. Updated 2 rows
 
-[Line 409] SELECT * FROM orders WHERE user_id = 2
+[Line 410] SELECT * FROM orders WHERE user_id = 2
 id              user_id         total           status          
 --------------- --------------- --------------- --------------- 
 3               2               3000.00         pending         
 (1 row)
 
 
-[Line 410] DELETE FROM users WHERE id = 2
+[Line 411] DELETE FROM users WHERE id = 2
 OK. Deleted 1 row
 
-[Line 411] SELECT * FROM orders WHERE user_id = 2
+[Line 412] SELECT * FROM orders WHERE user_id = 2
 id              user_id         total           status          
 --------------- --------------- --------------- --------------- 
 (0 rows)
 
 
-[Line 416] DELETE FROM transactions WHERE id > 15
+[Line 417] DELETE FROM transactions WHERE id > 15
 OK. Deleted 5 rows
 
-[Line 417] SELECT COUNT(*) FROM transactions
+[Line 418] SELECT COUNT(*) FROM transactions
 COUNT: 15
 
-[Line 418] DELETE FROM orders WHERE status = 'cancelled'
+[Line 419] DELETE FROM orders WHERE status = 'cancelled'
 OK. Deleted 0 rows
 
-[Line 419] SELECT * FROM orders
+[Line 420] SELECT * FROM orders
 id              user_id         total           status          
 --------------- --------------- --------------- --------------- 
 1               1               5000.00         completed       
@@ -1927,7 +1933,7 @@ id              user_id         total           status
 (15 rows)
 
 
-[Line 424] SHOW TABLES
+[Line 425] SHOW TABLES
 Table Name                     Columns   
 ------------------------------ -------   
 users                          7         
@@ -1943,7 +1949,7 @@ events                         4
 
 (10 tables)
 
-[Line 425] DESCRIBE users
+[Line 426] DESCRIBE users
 Table: users
 Column               Type         Null       Key       
 ------               ----         ----       ---       
@@ -1957,7 +1963,7 @@ metadata             JSON         YES
 
 (7 columns)
 
-[Line 426] DESCRIBE events
+[Line 427] DESCRIBE events
 Table: events
 Column               Type         Null       Key       
 ------               ----         ----       ---       
@@ -1968,7 +1974,7 @@ created_at           UNKNOWN      YES
 
 (4 columns)
 
-[Line 427] DESCRIBE transactions
+[Line 428] DESCRIBE transactions
 Table: transactions
 Column               Type         Null       Key       
 ------               ----         ----       ---       
@@ -1981,7 +1987,7 @@ tx_date              UNKNOWN      YES
 
 (6 columns)
 
-[Line 428] EXPLAIN SELECT * FROM users WHERE salary > 70000
+[Line 429] EXPLAIN SELECT * FROM users WHERE salary > 70000
 Query Plan:
 -----------
   Table: users
@@ -1991,7 +1997,7 @@ Query Plan:
   Index: B-Tree on INTEGER columns
   Strategy: Index scan (O(log n))
 
-[Line 429] EXPLAIN SELECT * FROM events WHERE event_date > '2026-09-15'
+[Line 430] EXPLAIN SELECT * FROM events WHERE event_date > '2026-09-15'
 Query Plan:
 -----------
   Table: events
@@ -2001,46 +2007,46 @@ Query Plan:
   Index: B-Tree on INTEGER columns
   Strategy: Index scan (O(log n))
 
-[Line 434] CREATE INDEX idx_user_salary ON users(salary)
+[Line 435] CREATE INDEX idx_user_salary ON users(salary)
 OK. Index 'idx_user_salary' registered (non-integer column, no B-Tree)
 
-[Line 435] CREATE INDEX idx_user_age ON users(age)
+[Line 436] CREATE INDEX idx_user_age ON users(age)
 OK. Index already exists on 'users.age'
 
-[Line 436] CREATE INDEX idx_event_date ON events(event_date)
+[Line 437] CREATE INDEX idx_event_date ON events(event_date)
 OK. Index 'idx_event_date' registered (non-integer column, no B-Tree)
 
-[Line 441] BACKUP TO 'stress_backup.hdb'
+[Line 442] BACKUP TO 'stress_backup.hdb'
 OK. Backup saved to 'stress_backup.hdb'
 
-[Line 446] SELECT COUNT(*) FROM users
+[Line 447] SELECT COUNT(*) FROM users
 COUNT: 16
 
-[Line 447] SELECT COUNT(*) FROM employees
+[Line 448] SELECT COUNT(*) FROM employees
 COUNT: 20
 
-[Line 448] SELECT COUNT(*) FROM departments
+[Line 449] SELECT COUNT(*) FROM departments
 COUNT: 10
 
-[Line 449] SELECT COUNT(*) FROM products
+[Line 450] SELECT COUNT(*) FROM products
 COUNT: 15
 
-[Line 450] SELECT COUNT(*) FROM customers
+[Line 451] SELECT COUNT(*) FROM customers
 COUNT: 10
 
-[Line 451] SELECT COUNT(*) FROM orders
+[Line 452] SELECT COUNT(*) FROM orders
 COUNT: 15
 
-[Line 452] SELECT COUNT(*) FROM transactions
+[Line 453] SELECT COUNT(*) FROM transactions
 COUNT: 15
 
-[Line 453] SELECT COUNT(*) FROM events
+[Line 454] SELECT COUNT(*) FROM events
 COUNT: 5
 
-[Line 454] SELECT COUNT(*) FROM audit_log
+[Line 455] SELECT COUNT(*) FROM audit_log
 COUNT: 3
 
 ========================================
 Script complete!
-  Commands executed: 272
-  Errors: 10
+  Commands executed: 282
+  Errors: 0

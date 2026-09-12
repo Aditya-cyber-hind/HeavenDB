@@ -180,6 +180,28 @@ static void generate_salt(uint8_t *salt, size_t len) {
     }
 }
 
+void auth_generate_random_password(char *output, int length) {
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    int charset_len = sizeof(charset) - 1;
+    
+    static int seeded = 0;
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+    
+    output[0] = 'A' + (rand() % 26);
+    output[1] = 'a' + (rand() % 26);
+    output[2] = '0' + (rand() % 10);
+    output[3] = charset[52 + (rand() % 10)];
+    
+    for (int i = 4; i < length - 1; i++) {
+        output[i] = charset[rand() % charset_len];
+    }
+    
+    output[length - 1] = '\0';
+}
+
 // ==================== AUTH IMPLEMENTATION ====================
 
 AuthSystem *auth_create(void) {
@@ -189,15 +211,61 @@ AuthSystem *auth_create(void) {
     auth->user_count = 0;
     auth->current_user_index = -1;
     
+    // Generate a random password for the default admin
+    char random_password[32];
+    auth_generate_random_password(random_password, 24);
+    
+    // Allow override via environment variable (useful for scripting)
+    const char *env_pw = getenv("HEAVENDB_INITIAL_PASSWORD");
+    const char *password_to_use = (env_pw && strlen(env_pw) > 0) ? env_pw : random_password;
+    
     strcpy(auth->users[0].username, "admin");
     generate_salt(auth->users[0].salt, SALT_SIZE);
-    pbkdf2("admin123", auth->users[0].salt, SALT_SIZE, PBKDF2_ITERATIONS, 
+    pbkdf2(password_to_use, auth->users[0].salt, SALT_SIZE, PBKDF2_ITERATIONS, 
            auth->users[0].password_hash, HASH_SIZE);
     auth->users[0].is_active = 1;
     auth->users[0].failed_attempts = 0;
     auth->users[0].is_locked = 0;
     auth->users[0].must_change_password = 1;
     auth->user_count = 1;
+    
+    // Backup password to a file in user's home directory
+    const char *home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOME");
+    
+    int wrote_to_file = 0;
+    if (home) {
+        char filepath[512];
+        snprintf(filepath, sizeof(filepath), "%s\\.heavendb_initial_password", home);
+        
+        FILE *pw_file = fopen(filepath, "w");
+        if (pw_file) {
+            fprintf(pw_file, "%s\n", password_to_use);
+            fclose(pw_file);
+            wrote_to_file = 1;
+        }
+    }
+    
+    // Print to STDERR so pipes don't swallow it
+    fprintf(stderr, "\n");
+    fprintf(stderr, "+==========================================================+\n");
+    fprintf(stderr, "|           HeavenDB -- FIRST RUN SETUP                    |\n");
+    fprintf(stderr, "+==========================================================+\n");
+    fprintf(stderr, "|  Username: admin                                         |\n");
+    fprintf(stderr, "|  Password: %-45s |\n", password_to_use);
+    fprintf(stderr, "|                                                          |\n");
+    fprintf(stderr, "|  !!! COPY THIS PASSWORD NOW -- it will NOT be shown !!!  |\n");
+    fprintf(stderr, "|      again. Change it immediately after first login:     |\n");
+    fprintf(stderr, "|                                                          |\n");
+    fprintf(stderr, "|      CHANGE PASSWORD 'YourNewSecure456'                  |\n");
+    fprintf(stderr, "+==========================================================+\n");
+    
+    if (wrote_to_file && home) {
+        fprintf(stderr, "|  Backup saved to: ~/.heavendb_initial_password           |\n");
+        fprintf(stderr, "|  (delete after copying)                                  |\n");
+        fprintf(stderr, "+==========================================================+\n");
+    }
+    fprintf(stderr, "\n");
     
     return auth;
 }

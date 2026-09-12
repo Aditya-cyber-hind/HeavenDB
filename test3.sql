@@ -1,21 +1,22 @@
 -- ============================================
 -- HeavenDB COMPLETE STRESS TEST
 -- Every feature + Date/Time + JSON functions
+-- Uses DROP TABLE IF EXISTS for clean first-run
 -- ============================================
 
 -- ============================================
 -- SETUP
 -- ============================================
-DROP TABLE events
-DROP TABLE transactions
-DROP TABLE products
-DROP TABLE categories
-DROP TABLE customers
-DROP TABLE orders
-DROP TABLE employees
-DROP TABLE departments
-DROP TABLE audit_log
-DROP TABLE users
+DROP TABLE IF EXISTS events
+DROP TABLE IF EXISTS transactions
+DROP TABLE IF EXISTS products
+DROP TABLE IF EXISTS categories
+DROP TABLE IF EXISTS customers
+DROP TABLE IF EXISTS orders
+DROP TABLE IF EXISTS employees
+DROP TABLE IF EXISTS departments
+DROP TABLE IF EXISTS audit_log
+DROP TABLE IF EXISTS users
 
 CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, email TEXT, age INTEGER, salary FLOAT, is_active BOOLEAN, metadata JSON)
 CREATE TABLE employees (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, department_id INTEGER, salary FLOAT, hired_date DATE, active BOOLEAN)
@@ -62,7 +63,7 @@ INSERT INTO departments VALUES (NULL, 'Support', 160000.00, 'Chennai')
 INSERT INTO departments VALUES (NULL, 'Legal', 140000.00, 'Delhi')
 
 -- ============================================
--- INSERT EMPLOYEES (with DATE column)
+-- INSERT EMPLOYEES
 -- ============================================
 INSERT INTO employees VALUES (NULL, 'Raj', 1, 90000.00, '2020-01-15', TRUE)
 INSERT INTO employees VALUES (NULL, 'Simran', 1, 85000.00, '2021-03-20', TRUE)
@@ -148,7 +149,7 @@ INSERT INTO orders VALUES (NULL, 14, 2100.00, 'completed')
 INSERT INTO orders VALUES (NULL, 15, 6400.00, 'completed')
 
 -- ============================================
--- INSERT TRANSACTIONS (with DATE column)
+-- INSERT TRANSACTIONS
 -- ============================================
 INSERT INTO transactions VALUES (NULL, 1, 1, 2, 170000.00, '2026-01-15')
 INSERT INTO transactions VALUES (NULL, 4, 2, 1, 80000.00, '2026-01-16')
@@ -172,14 +173,14 @@ INSERT INTO transactions VALUES (NULL, 10, 9, 5, 4000.00, '2026-03-04')
 INSERT INTO transactions VALUES (NULL, 13, 10, 2, 50000.00, '2026-03-05')
 
 -- ============================================
--- INSERT AUDIT LOG (with TIMESTAMP + JSON)
+-- INSERT AUDIT LOG
 -- ============================================
 INSERT INTO audit_log VALUES (NULL, 'CREATE_USER', '{"user":"admin","ip":"127.0.0.1"}', '2026-09-12 10:30:00')
 INSERT INTO audit_log VALUES (NULL, 'LOGIN', '{"user":"admin","success":true}', '2026-09-12 10:31:15')
 INSERT INTO audit_log VALUES (NULL, 'BACKUP', '{"file":"stress_backup.hdb","size":"1MB"}', '2026-09-12 10:45:00')
 
 -- ============================================
--- INSERT EVENTS (NEW FEATURE TEST)
+-- INSERT EVENTS
 -- ============================================
 INSERT INTO events VALUES (NULL, 'Team Meeting', '2026-09-15', '2026-09-12 14:30:00')
 INSERT INTO events VALUES (NULL, 'Product Launch', '2026-10-20', '2026-09-10 09:00:00')
@@ -330,7 +331,7 @@ SELECT * FROM users WHERE salary > ANY (SELECT salary FROM employees)
 SELECT * FROM users WHERE salary > ALL (SELECT salary FROM employees)
 
 -- ============================================
--- STRESS 18: JSON functions (NEW)
+-- STRESS 18: JSON functions
 -- ============================================
 SELECT json_extract(metadata, 'role') FROM users
 SELECT json_extract(metadata, 'level') FROM users
@@ -339,7 +340,7 @@ SELECT json_set(metadata, 'role', 'manager') FROM users
 SELECT json_set(metadata, 'level', '9') FROM users
 
 -- ============================================
--- STRESS 19: Date/Time functions (NEW)
+-- STRESS 19: Date/Time functions
 -- ============================================
 SELECT NOW()
 SELECT CURRENT_DATE()

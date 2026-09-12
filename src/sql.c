@@ -1455,10 +1455,29 @@ static int handle_create_table(TokenList *tokens) {
 // ==================== DROP TABLE ====================
 
 static int handle_drop_table(TokenList *tokens) {
-    if (tokens->count < 3) return -1;
+    int if_exists = 0;
+    int name_idx = 2;
+    
+    // DROP TABLE IF EXISTS users
+    // tokens[0]=DROP, [1]=TABLE, [2]=IF, [3]=EXISTS, [4]=users
+    if (tokens->count >= 5) {
+        char second[MAX_TOKEN_LEN];
+        char third[MAX_TOKEN_LEN];
+        strcpy(second, tokens->tokens[2]);
+        strcpy(third, tokens->tokens[3]);
+        to_upper(second);
+        to_upper(third);
+        
+        if (strcmp(second, "IF") == 0 && strcmp(third, "EXISTS") == 0) {
+            if_exists = 1;
+            name_idx = 4;
+        }
+    }
+    
+    if (tokens->count <= name_idx) return -1;
     
     char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[2]);
+    strcpy(table_name, tokens->tokens[name_idx]);
     
     for (int i = 0; i < table_count; i++) {
         if (strcmp(tables[i]->name, table_name) == 0) {
@@ -1468,7 +1487,6 @@ static int handle_drop_table(TokenList *tokens) {
             }
             table_count--;
             
-            // Remove FKs for this table
             int new_count = 0;
             for (int k = 0; k < foreign_key_count; k++) {
                 if (strcmp(foreign_keys[k].table_name, table_name) != 0 &&
@@ -1482,6 +1500,10 @@ static int handle_drop_table(TokenList *tokens) {
             printf("OK. Dropped table '%s'\n", table_name);
             return 0;
         }
+    }
+    
+    if (if_exists) {
+        return 0;
     }
     
     printf("ERROR: Table '%s' not found\n", table_name);
