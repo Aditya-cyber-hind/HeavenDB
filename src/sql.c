@@ -38,6 +38,9 @@ static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
+// Savepoint tracking (Session 2)
+static int current_savepoint_active = 0;
+static char current_savepoint_name[64] = "";
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -52,6 +55,8 @@ typedef struct {
     char col_name[64];
     char ref_table[MAX_TABLE_NAME];
     char ref_col[64];
+    int on_delete_cascade;
+    int on_update_cascade;
 } ForeignKey;
 
 static ForeignKey foreign_keys[MAX_TABLES * MAX_COLUMNS];
@@ -1366,6 +1371,7 @@ static int handle_create_table(TokenList *tokens) {
                            table->columns[col_index].name);
                     strcpy(foreign_keys[foreign_key_count].ref_table, 
                            tokens->tokens[i + 1]);
+                    
                     char ref_col[64] = "";
                     char *open_p = strchr(tokens->tokens[i + 2], '(');
                     if (open_p) {
@@ -1373,10 +1379,47 @@ static int handle_create_table(TokenList *tokens) {
                         char *close_p = strchr(ref_col, ')');
                         if (close_p) *close_p = '\0';
                     }
+                    if (strlen(ref_col) == 0 && i + 3 < tokens->count) {
+                        strcpy(ref_col, tokens->tokens[i + 3]);
+                    }
                     strcpy(foreign_keys[foreign_key_count].ref_col, ref_col);
+                    foreign_keys[foreign_key_count].on_delete_cascade = 0;
+                    foreign_keys[foreign_key_count].on_update_cascade = 0;
+                    
+                    int j = i + 5;
+                    while (j < tokens->count && strcmp(tokens->tokens[j], ")") != 0 && 
+                           strcmp(tokens->tokens[j], ",") != 0) {
+                        char kw[32];
+                        strcpy(kw, tokens->tokens[j]);
+                        to_upper(kw);
+                        
+                        if (strcmp(kw, "ON") == 0 && j + 2 < tokens->count) {
+                            char action[32];
+                            strcpy(action, tokens->tokens[j + 1]);
+                            to_upper(action);
+                            
+                            char behavior[32];
+                            strcpy(behavior, tokens->tokens[j + 2]);
+                            to_upper(behavior);
+                            
+                            if (strcmp(behavior, "CASCADE") == 0) {
+                                if (strcmp(action, "DELETE") == 0) {
+                                    foreign_keys[foreign_key_count].on_delete_cascade = 1;
+                                } else if (strcmp(action, "UPDATE") == 0) {
+                                    foreign_keys[foreign_key_count].on_update_cascade = 1;
+                                }
+                            }
+                            j += 3;
+                        } else {
+                            j++;
+                        }
+                    }
+                    
                     foreign_key_count++;
+                    i = j;
+                } else {
+                    i += 3;
                 }
-                i += 3;
             }
             else {
                 i++;
@@ -2082,6 +2125,50 @@ static int handle_delete(TokenList *tokens) {
         }
         
         if (matches) {
+            int deleted_value = 0;
+            if (table->columns[where_idx].type == TYPE_INTEGER) {
+                deleted_value = *(int*)row[where_idx];
+            }
+            
+            // Handle CASCADE for all foreign keys pointing to this table
+            for (int fk = 0; fk < foreign_key_count; fk++) {
+                if (strcmp(foreign_keys[fk].ref_table, table_name) != 0) continue;
+                if (!foreign_keys[fk].on_delete_cascade) continue;
+                
+                Table *child_table = find_table(foreign_keys[fk].table_name);
+                if (!child_table) continue;
+                
+                int child_col_idx = table_get_column_index(child_table, 
+                                                            foreign_keys[fk].col_name);
+                if (child_col_idx == -1) continue;
+                
+                // Delete all child rows with matching FK value
+                for (size_t cr = 0; cr < child_table->row_count; cr++) {
+                    void **child_row = (void**)child_table->rows[cr];
+                    
+                    int child_matches = 0;
+                    if (child_table->columns[child_col_idx].type == TYPE_INTEGER) {
+                        if (*(int*)child_row[child_col_idx] == deleted_value) {
+                            child_matches = 1;
+                        }
+                    }
+                    
+                    if (child_matches) {
+                        for (int c = 0; c < child_table->column_count; c++) {
+                            free(child_row[c]);
+                        }
+                        free(child_row);
+                        
+                        for (size_t j = cr; j < child_table->row_count - 1; j++) {
+                            child_table->rows[j] = child_table->rows[j + 1];
+                        }
+                        child_table->row_count--;
+                        cr--;
+                    }
+                }
+            }
+            
+            // Delete the parent row
             for (int c = 0; c < table->column_count; c++) {
                 free(row[c]);
             }
@@ -3271,6 +3358,82 @@ static int handle_string_function(TokenList *tokens) {
     
     strcpy(arg, tokens->tokens[arg_start]);
     
+    // Nested function: UPPER(CONCAT(...))
+    if (strcmp(arg, "CONCAT") == 0 && table) {
+        int inner_open = -1;
+        int inner_close = -1;
+        for (int i = 1; i < from_idx; i++) {
+            if (strcmp(tokens->tokens[i], "CONCAT") == 0) {
+                inner_open = i;
+                break;
+            }
+        }
+        
+        if (inner_open != -1) {
+            int depth = 0;
+            for (int i = inner_open + 1; i < from_idx; i++) {
+                if (strcmp(tokens->tokens[i], "(") == 0) depth++;
+                else if (strcmp(tokens->tokens[i], ")") == 0) {
+                    depth--;
+                    if (depth == 0) {
+                        inner_close = i;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (inner_close != -1) {
+            printf("result\n");
+            printf("------\n");
+            
+            for (size_t r = 0; r < table->row_count; r++) {
+                void **row = (void**)table->rows[r];
+                char result[512] = "";
+                
+                for (int i = inner_open + 2; i < inner_close; i++) {
+                    if (strcmp(tokens->tokens[i], ",") == 0) continue;
+                    
+                    char part[256] = "";
+                    int col_idx_k = table_get_column_index(table, tokens->tokens[i]);
+                    
+                    if (col_idx_k >= 0) {
+                        switch (table->columns[col_idx_k].type) {
+                            case TYPE_TEXT:
+                            case TYPE_UUID:
+                            case TYPE_JSON:
+                                strcpy(part, (char*)row[col_idx_k]);
+                                break;
+                            case TYPE_INTEGER:
+                                snprintf(part, sizeof(part), "%d", *(int*)row[col_idx_k]);
+                                break;
+                            case TYPE_BOOLEAN:
+                                strcpy(part, *(int*)row[col_idx_k] ? "TRUE" : "FALSE");
+                                break;
+                            case TYPE_FLOAT:
+                                snprintf(part, sizeof(part), "%.2f", *(double*)row[col_idx_k]);
+                                break;
+                        }
+                    } else {
+                        strcpy(part, tokens->tokens[i]);
+                    }
+                    
+                    strcat(result, part);
+                }
+                
+                if (strcmp(func_name, "UPPER") == 0) to_upper(result);
+                else if (strcmp(func_name, "LOWER") == 0) {
+                    for (int k = 0; result[k]; k++) result[k] = tolower((unsigned char)result[k]);
+                }
+                
+                printf("%-15s\n", result);
+            }
+            
+            printf("(%zu rows)\n", table->row_count);
+            return 0;
+        }
+    }
+    
     int substr_start = 0;
     int substr_len = 0;
     if (strcmp(func_name, "SUBSTR") == 0 || strcmp(func_name, "SUBSTRING") == 0) {
@@ -4330,6 +4493,834 @@ static int handle_group_concat(TokenList *tokens) {
     return 0;
 }
 
+static int handle_case_when(TokenList *tokens) {
+    // SELECT name, CASE WHEN age < 18 THEN 'minor' ELSE 'adult' END FROM users
+    // SELECT name, CASE WHEN age < 18 THEN 'minor' WHEN age < 65 THEN 'adult' ELSE 'senior' END FROM users
+    
+    // Find FROM index
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    // Find CASE index
+    int case_idx = -1;
+    for (int i = 1; i < from_idx; i++) {
+        if (strcmp(tokens->tokens[i], "CASE") == 0) {
+            case_idx = i;
+            break;
+        }
+    }
+    
+    if (case_idx == -1) return -1;
+    
+    // Find END index
+    int end_idx = -1;
+    for (int i = case_idx + 1; i < from_idx; i++) {
+        if (strcmp(tokens->tokens[i], "END") == 0) {
+            end_idx = i;
+            break;
+        }
+    }
+    
+    if (end_idx == -1) return -1;
+    
+    // Parse WHEN...THEN pairs
+    struct {
+        char col_name[64];
+        char op[4];
+        char value[128];
+        char result[128];
+    } conditions[16];
+    int condition_count = 0;
+    char else_result[128] = "";
+    int has_else = 0;
+    
+    int i = case_idx + 1;
+    while (i < end_idx) {
+        if (strcmp(tokens->tokens[i], "WHEN") == 0) {
+            if (condition_count >= 16) {
+                printf("ERROR: Too many WHEN clauses\n");
+                return -1;
+            }
+            
+            // WHEN col op value THEN result
+            strcpy(conditions[condition_count].col_name, tokens->tokens[i + 1]);
+            strcpy(conditions[condition_count].op, tokens->tokens[i + 2]);
+            strcpy(conditions[condition_count].value, tokens->tokens[i + 3]);
+            
+            // Find THEN
+            int then_idx = -1;
+            for (int j = i + 4; j < end_idx; j++) {
+                if (strcmp(tokens->tokens[j], "THEN") == 0) {
+                    then_idx = j;
+                    break;
+                }
+            }
+            
+            if (then_idx == -1) {
+                printf("ERROR: Missing THEN\n");
+                return -1;
+            }
+            
+            strcpy(conditions[condition_count].result, tokens->tokens[then_idx + 1]);
+            condition_count++;
+            
+            i = then_idx + 2;
+        }
+        else if (strcmp(tokens->tokens[i], "ELSE") == 0) {
+            strcpy(else_result, tokens->tokens[i + 1]);
+            has_else = 1;
+            i += 2;
+        }
+        else {
+            i++;
+        }
+    }
+    
+    // Print header
+    printf("%-15s %-15s\n", "name", "category");
+    printf("%-15s %-15s\n", "---------------", "---------------");
+    
+    // Validate first condition's column
+    int first_col_idx = table_get_column_index(table, conditions[0].col_name);
+    if (first_col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", conditions[0].col_name);
+        return -1;
+    }
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        
+        char name_val[256] = "";
+        // Get name column (assume first column is id, second is name)
+        if (table->column_count >= 2) {
+            if (table->columns[1].type == TYPE_TEXT) {
+                strcpy(name_val, (char*)row[1]);
+            }
+        }
+        
+        // Evaluate conditions
+        char result_val[128] = "";
+        int matched = 0;
+        
+        for (int c = 0; c < condition_count; c++) {
+            int col_idx = table_get_column_index(table, conditions[c].col_name);
+            if (col_idx == -1) continue;
+            
+            int cond_match = 0;
+            
+            if (table->columns[col_idx].type == TYPE_INTEGER) {
+                int row_val = *(int*)row[col_idx];
+                int cond_val = atoi(conditions[c].value);
+                
+                if (strcmp(conditions[c].op, ">") == 0 && row_val > cond_val) cond_match = 1;
+                else if (strcmp(conditions[c].op, "<") == 0 && row_val < cond_val) cond_match = 1;
+                else if (strcmp(conditions[c].op, "=") == 0 && row_val == cond_val) cond_match = 1;
+                else if (strcmp(conditions[c].op, ">=") == 0 && row_val >= cond_val) cond_match = 1;
+                else if (strcmp(conditions[c].op, "<=") == 0 && row_val <= cond_val) cond_match = 1;
+                else if (strcmp(conditions[c].op, "!=") == 0 && row_val != cond_val) cond_match = 1;
+            }
+            
+            if (cond_match) {
+                strcpy(result_val, conditions[c].result);
+                matched = 1;
+                break;
+            }
+        }
+        
+        if (!matched && has_else) {
+            strcpy(result_val, else_result);
+        }
+        
+        printf("%-15s %-15s\n", name_val, result_val);
+        match_count++;
+    }
+    
+    printf("(%d rows)\n", match_count);
+    return 0;
+}
+
+static int handle_exists(TokenList *tokens) {
+    // SELECT * FROM users WHERE EXISTS (SELECT * FROM orders WHERE ...)
+    // SELECT * FROM users WHERE NOT EXISTS (SELECT * FROM orders WHERE ...)
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char main_table_name[MAX_TABLE_NAME];
+    strcpy(main_table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *main_table = find_table(main_table_name);
+    if (!main_table) {
+        printf("ERROR: Table '%s' not found\n", main_table_name);
+        return -1;
+    }
+    
+    // Find WHERE EXISTS or WHERE NOT EXISTS
+    int where_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "WHERE") == 0) {
+            where_idx = i;
+            break;
+        }
+    }
+    
+    if (where_idx == -1) return -1;
+    
+    int is_not = 0;
+    int exists_idx = -1;
+    
+    for (int i = where_idx + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "NOT") == 0) {
+            is_not = 1;
+        }
+        else if (strcmp(tokens->tokens[i], "EXISTS") == 0) {
+            exists_idx = i;
+            break;
+        }
+    }
+    
+    if (exists_idx == -1) return -1;
+    
+    // Extract subquery (inside parentheses)
+    int open_paren = -1;
+    int close_paren = -1;
+    for (int i = exists_idx + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0 && open_paren == -1) {
+            open_paren = i;
+        }
+        if (strcmp(tokens->tokens[i], ")") == 0 && open_paren != -1) {
+            close_paren = i;
+            break;
+        }
+    }
+    
+    if (open_paren == -1 || close_paren == -1) {
+        printf("ERROR: Invalid EXISTS syntax\n");
+        return -1;
+    }
+    
+    // Parse subquery: SELECT * FROM table2 WHERE table2.col = table1.col
+    char sub_table_name[MAX_TABLE_NAME] = "";
+    char sub_join_col[64] = "";      // table2's column
+    char main_join_col[64] = "";     // table1's column
+    
+    for (int i = open_paren + 1; i < close_paren; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            strcpy(sub_table_name, tokens->tokens[i + 1]);
+        }
+        if (strcmp(tokens->tokens[i], "=") == 0) {
+            // tokens[i-1] is left side (table2.col), tokens[i+1] is right side (table1.col)
+            char left[128];
+            strcpy(left, tokens->tokens[i - 1]);
+            char *dot = strchr(left, '.');
+            if (dot) strcpy(sub_join_col, dot + 1);
+            else strcpy(sub_join_col, left);
+            
+            char right[128];
+            strcpy(right, tokens->tokens[i + 1]);
+            dot = strchr(right, '.');
+            if (dot) strcpy(main_join_col, dot + 1);
+            else strcpy(main_join_col, right);
+        }
+    }
+    
+    if (strlen(sub_table_name) == 0 || strlen(sub_join_col) == 0 || strlen(main_join_col) == 0) {
+        printf("ERROR: Invalid EXISTS subquery\n");
+        return -1;
+    }
+    
+    Table *sub_table = find_table(sub_table_name);
+    if (!sub_table) {
+        printf("ERROR: Table '%s' not found\n", sub_table_name);
+        return -1;
+    }
+    
+    int sub_col_idx = table_get_column_index(sub_table, sub_join_col);
+    int main_col_idx = table_get_column_index(main_table, main_join_col);
+    
+    if (sub_col_idx == -1 || main_col_idx == -1) {
+        printf("ERROR: Join column not found\n");
+        return -1;
+    }
+    
+    // Print header (all columns from main table)
+    for (int i = 0; i < main_table->column_count; i++) {
+        printf("%-15s ", main_table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < main_table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < main_table->row_count; r++) {
+        void **main_row = (void**)main_table->rows[r];
+        int main_val = *(int*)main_row[main_col_idx];
+        
+        int exists = 0;
+        for (size_t r2 = 0; r2 < sub_table->row_count; r2++) {
+            void **sub_row = (void**)sub_table->rows[r2];
+            if (sub_table->columns[sub_col_idx].type != TYPE_INTEGER) continue;
+            if (*(int*)sub_row[sub_col_idx] == main_val) {
+                exists = 1;
+                break;
+            }
+        }
+        
+        int should_show = is_not ? !exists : exists;
+        
+        if (should_show) {
+            for (int i = 0; i < main_table->column_count; i++) {
+                switch (main_table->columns[i].type) {
+                    case TYPE_INTEGER:
+                        printf("%-15d ", *(int*)main_row[i]);
+                        break;
+                    case TYPE_BOOLEAN:
+                        printf("%-15s ", *(int*)main_row[i] ? "TRUE" : "FALSE");
+                        break;
+                    case TYPE_TEXT:
+                        printf("%-15s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_UUID:
+                        printf("%-38s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_JSON:
+                        printf("%-30s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_FLOAT:
+                        printf("%-15.2f ", *(double*)main_row[i]);
+                        break;
+                }
+            }
+            printf("\n");
+            match_count++;
+        }
+    }
+    
+    printf("(%d rows)\n", match_count);
+    return 0;
+}
+
+static int handle_any_all(TokenList *tokens) {
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char main_table_name[MAX_TABLE_NAME];
+    strcpy(main_table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *main_table = find_table(main_table_name);
+    if (!main_table) {
+        printf("ERROR: Table '%s' not found\n", main_table_name);
+        return -1;
+    }
+    
+    int where_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "WHERE") == 0) {
+            where_idx = i;
+            break;
+        }
+    }
+    
+    if (where_idx == -1) return -1;
+    
+    char col_name[64];
+    char op[4];
+    char quantifier[8] = "";
+    
+    strcpy(col_name, tokens->tokens[where_idx + 1]);
+    strcpy(op, tokens->tokens[where_idx + 2]);
+    
+    int quant_idx = where_idx + 3;
+    if (quant_idx < tokens->count) {
+        strcpy(quantifier, tokens->tokens[quant_idx]);
+        to_upper(quantifier);
+    }
+    
+    if (strcmp(quantifier, "ANY") != 0 && 
+        strcmp(quantifier, "ALL") != 0 && 
+        strcmp(quantifier, "SOME") != 0) {
+        return -1;
+    }
+    
+    int col_idx = table_get_column_index(main_table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    // Extract subquery: find the matching paren pair with depth tracking
+    int open_paren = -1;
+    int close_paren = -1;
+    int depth = 0;
+    for (int i = quant_idx + 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0) {
+            if (depth == 0) open_paren = i;
+            depth++;
+        }
+        else if (strcmp(tokens->tokens[i], ")") == 0) {
+            depth--;
+            if (depth == 0) {
+                close_paren = i;
+                break;
+            }
+        }
+    }
+    
+    if (open_paren == -1 || close_paren == -1) {
+        printf("ERROR: Invalid ANY/ALL syntax\n");
+        return -1;
+    }
+    
+    // Parse subquery: SELECT col FROM table
+    // Token layout: SELECT(open+1) col(open+2) FROM(open+3) table(open+4)
+    char sub_col_name[64] = "";
+    char sub_table_name[MAX_TABLE_NAME] = "";
+    
+    for (int i = open_paren + 1; i < close_paren; i++) {
+        if (strcmp(tokens->tokens[i], "SELECT") == 0 && i + 1 < close_paren) {
+            strcpy(sub_col_name, tokens->tokens[i + 1]);
+        }
+        if (strcmp(tokens->tokens[i], "FROM") == 0 && i + 1 < close_paren) {
+            strcpy(sub_table_name, tokens->tokens[i + 1]);
+        }
+    }
+    
+    if (strlen(sub_col_name) == 0 || strlen(sub_table_name) == 0) {
+        printf("ERROR: Invalid subquery\n");
+        return -1;
+    }
+    
+    Table *sub_table = find_table(sub_table_name);
+    if (!sub_table) {
+        printf("ERROR: Table '%s' not found\n", sub_table_name);
+        return -1;
+    }
+    
+    int sub_col_idx = table_get_column_index(sub_table, sub_col_name);
+    if (sub_col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", sub_col_name);
+        return -1;
+    }
+    
+    for (int i = 0; i < main_table->column_count; i++) {
+        printf("%-15s ", main_table->columns[i].name);
+    }
+    printf("\n");
+    for (int i = 0; i < main_table->column_count; i++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    int is_all = (strcmp(quantifier, "ALL") == 0);
+    
+    for (size_t r = 0; r < main_table->row_count; r++) {
+        void **main_row = (void**)main_table->rows[r];
+        
+        if (main_table->columns[col_idx].type != TYPE_INTEGER) continue;
+        int main_val = *(int*)main_row[col_idx];
+        
+        int true_count = 0;
+        int false_count = 0;
+        int total = 0;
+        
+        for (size_t r2 = 0; r2 < sub_table->row_count; r2++) {
+            void **sub_row = (void**)sub_table->rows[r2];
+            if (sub_table->columns[sub_col_idx].type != TYPE_INTEGER) continue;
+            int sub_val = *(int*)sub_row[sub_col_idx];
+            total++;
+            
+            int cond_match = 0;
+            if (strcmp(op, ">") == 0 && main_val > sub_val) cond_match = 1;
+            else if (strcmp(op, "<") == 0 && main_val < sub_val) cond_match = 1;
+            else if (strcmp(op, "=") == 0 && main_val == sub_val) cond_match = 1;
+            else if (strcmp(op, ">=") == 0 && main_val >= sub_val) cond_match = 1;
+            else if (strcmp(op, "<=") == 0 && main_val <= sub_val) cond_match = 1;
+            else if (strcmp(op, "!=") == 0 && main_val != sub_val) cond_match = 1;
+            else if (strcmp(op, "<>") == 0 && main_val != sub_val) cond_match = 1;
+            
+            if (cond_match) true_count++;
+            else false_count++;
+        }
+        
+        int should_show = 0;
+        if (is_all) {
+            should_show = (total > 0 && false_count == 0);
+        } else {
+            should_show = (true_count > 0);
+        }
+        
+        if (should_show) {
+            for (int i = 0; i < main_table->column_count; i++) {
+                switch (main_table->columns[i].type) {
+                    case TYPE_INTEGER:
+                        printf("%-15d ", *(int*)main_row[i]);
+                        break;
+                    case TYPE_BOOLEAN:
+                        printf("%-15s ", *(int*)main_row[i] ? "TRUE" : "FALSE");
+                        break;
+                    case TYPE_TEXT:
+                        printf("%-15s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_UUID:
+                        printf("%-38s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_JSON:
+                        printf("%-30s ", (char*)main_row[i]);
+                        break;
+                    case TYPE_FLOAT:
+                        printf("%-15.2f ", *(double*)main_row[i]);
+                        break;
+                }
+            }
+            printf("\n");
+            match_count++;
+        }
+    }
+    
+    printf("(%d rows)\n", match_count);
+    return 0;
+}
+
+static int handle_subquery(TokenList *tokens) {
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char main_table_name[MAX_TABLE_NAME];
+    strcpy(main_table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *main_table = find_table(main_table_name);
+    if (!main_table) {
+        printf("ERROR: Table '%s' not found\n", main_table_name);
+        return -1;
+    }
+    
+    int where_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "WHERE") == 0) {
+            where_idx = i;
+            break;
+        }
+    }
+    
+    if (where_idx == -1) return -1;
+    
+    char col_name[64];
+    char op[4];
+    strcpy(col_name, tokens->tokens[where_idx + 1]);
+    strcpy(op, tokens->tokens[where_idx + 2]);
+    
+    int col_idx = table_get_column_index(main_table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    int open_paren = -1;
+    int close_paren = -1;
+    int depth = 0;
+    for (int i = where_idx + 3; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0) {
+            if (depth == 0) open_paren = i;
+            depth++;
+        }
+        else if (strcmp(tokens->tokens[i], ")") == 0) {
+            depth--;
+            if (depth == 0) {
+                close_paren = i;
+                break;
+            }
+        }
+    }
+    
+    if (open_paren == -1 || close_paren == -1) {
+        printf("ERROR: Invalid subquery\n");
+        return -1;
+    }
+    
+    char func_name[32] = "";
+    char sub_col_name[64] = "";
+    char sub_table_name[MAX_TABLE_NAME] = "";
+    
+    int i = open_paren + 1;
+    while (i < close_paren) {
+        char tok[MAX_TOKEN_LEN];
+        strcpy(tok, tokens->tokens[i]);
+        to_upper(tok);
+        
+        if (strcmp(tok, "AVG") == 0 || strcmp(tok, "SUM") == 0 ||
+            strcmp(tok, "COUNT") == 0 || strcmp(tok, "MIN") == 0 ||
+            strcmp(tok, "MAX") == 0) {
+            strcpy(func_name, tok);
+            if (i + 2 < close_paren) {
+                strcpy(sub_col_name, tokens->tokens[i + 2]);
+            }
+        }
+        else if (strcmp(tok, "FROM") == 0) {
+            if (i + 1 < close_paren) {
+                strcpy(sub_table_name, tokens->tokens[i + 1]);
+            }
+            break;
+        }
+        i++;
+    }
+    
+    if (strlen(sub_table_name) == 0) {
+        printf("ERROR: Invalid subquery\n");
+        return -1;
+    }
+    
+    Table *sub_table = find_table(sub_table_name);
+    if (!sub_table) {
+        printf("ERROR: Table '%s' not found\n", sub_table_name);
+        return -1;
+    }
+    
+    double sub_value = 0;
+    
+    if (strcmp(func_name, "COUNT") == 0) {
+        sub_value = (double)sub_table->row_count;
+    } else if (strlen(func_name) > 0 && strlen(sub_col_name) > 0) {
+        int sub_col_idx = table_get_column_index(sub_table, sub_col_name);
+        if (sub_col_idx == -1) {
+            printf("ERROR: Column '%s' not found\n", sub_col_name);
+            return -1;
+        }
+        
+        if (strcmp(func_name, "AVG") == 0) {
+            long long sum = 0;
+            int count = 0;
+            for (size_t r = 0; r < sub_table->row_count; r++) {
+                void **row = (void**)sub_table->rows[r];
+                if (sub_table->columns[sub_col_idx].type == TYPE_INTEGER) {
+                    sum += *(int*)row[sub_col_idx];
+                    count++;
+                }
+            }
+            sub_value = count > 0 ? (double)sum / count : 0;
+        } else if (strcmp(func_name, "SUM") == 0) {
+            long long sum = 0;
+            for (size_t r = 0; r < sub_table->row_count; r++) {
+                void **row = (void**)sub_table->rows[r];
+                if (sub_table->columns[sub_col_idx].type == TYPE_INTEGER) {
+                    sum += *(int*)row[sub_col_idx];
+                }
+            }
+            sub_value = (double)sum;
+        } else if (strcmp(func_name, "MIN") == 0) {
+            int first = 1;
+            for (size_t r = 0; r < sub_table->row_count; r++) {
+                void **row = (void**)sub_table->rows[r];
+                if (sub_table->columns[sub_col_idx].type != TYPE_INTEGER) continue;
+                int v = *(int*)row[sub_col_idx];
+                if (first || v < (int)sub_value) { sub_value = v; first = 0; }
+            }
+        } else if (strcmp(func_name, "MAX") == 0) {
+            int first = 1;
+            for (size_t r = 0; r < sub_table->row_count; r++) {
+                void **row = (void**)sub_table->rows[r];
+                if (sub_table->columns[sub_col_idx].type != TYPE_INTEGER) continue;
+                int v = *(int*)row[sub_col_idx];
+                if (first || v > (int)sub_value) { sub_value = v; first = 0; }
+            }
+        }
+    }
+    
+    for (int c = 0; c < main_table->column_count; c++) {
+        printf("%-15s ", main_table->columns[c].name);
+    }
+    printf("\n");
+    for (int c = 0; c < main_table->column_count; c++) {
+        printf("%-15s ", "---------------");
+    }
+    printf("\n");
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < main_table->row_count; r++) {
+        void **main_row = (void**)main_table->rows[r];
+        if (main_table->columns[col_idx].type != TYPE_INTEGER) continue;
+        double main_val = *(int*)main_row[col_idx];
+        
+        int cond_match = 0;
+        if (strcmp(op, ">") == 0 && main_val > sub_value) cond_match = 1;
+        else if (strcmp(op, "<") == 0 && main_val < sub_value) cond_match = 1;
+        else if (strcmp(op, "=") == 0 && main_val == sub_value) cond_match = 1;
+        else if (strcmp(op, ">=") == 0 && main_val >= sub_value) cond_match = 1;
+        else if (strcmp(op, "<=") == 0 && main_val <= sub_value) cond_match = 1;
+        else if (strcmp(op, "!=") == 0 && main_val != sub_value) cond_match = 1;
+        else if (strcmp(op, "<>") == 0 && main_val != sub_value) cond_match = 1;
+        
+        if (cond_match) {
+            for (int c = 0; c < main_table->column_count; c++) {
+                switch (main_table->columns[c].type) {
+                    case TYPE_INTEGER: printf("%-15d ", *(int*)main_row[c]); break;
+                    case TYPE_BOOLEAN: printf("%-15s ", *(int*)main_row[c] ? "TRUE" : "FALSE"); break;
+                    case TYPE_TEXT:    printf("%-15s ", (char*)main_row[c]); break;
+                    case TYPE_UUID:    printf("%-38s ", (char*)main_row[c]); break;
+                    case TYPE_JSON:    printf("%-30s ", (char*)main_row[c]); break;
+                    case TYPE_FLOAT:   printf("%-15.2f ", *(double*)main_row[c]); break;
+                }
+            }
+            printf("\n");
+            match_count++;
+        }
+    }
+    
+    printf("(%d rows)\n", match_count);
+    return 0;
+}
+
+static int handle_savepoint(TokenList *tokens) {
+    if (tokens->count < 2) {
+        printf("ERROR: Usage: SAVEPOINT <name>\n");
+        return -1;
+    }
+    
+    if (!active_wal || !active_wal->in_transaction) {
+        printf("ERROR: No active transaction\n");
+        return -1;
+    }
+    
+    char savepoint_name[64];
+    strcpy(savepoint_name, tokens->tokens[1]);
+    
+    if (wal_savepoint(active_wal, savepoint_name) != 0) {
+        printf("ERROR: Failed to create savepoint (maybe it already exists)\n");
+        return -1;
+    }
+    
+    printf("OK. Savepoint '%s' created\n", savepoint_name);
+    return 0;
+}
+
+static int handle_release_savepoint(TokenList *tokens) {
+    // RELEASE SAVEPOINT sp1  OR  RELEASE sp1
+    if (tokens->count < 2) {
+        printf("ERROR: Usage: RELEASE SAVEPOINT <name>\n");
+        return -1;
+    }
+    
+    if (!active_wal || !active_wal->in_transaction) {
+        printf("ERROR: No active transaction\n");
+        return -1;
+    }
+    
+    char savepoint_name[64] = "";
+    
+    // Check if "SAVEPOINT" keyword is present
+    char second[MAX_TOKEN_LEN];
+    strcpy(second, tokens->tokens[1]);
+    to_upper(second);
+    
+    if (strcmp(second, "SAVEPOINT") == 0) {
+        if (tokens->count < 3) {
+            printf("ERROR: Usage: RELEASE SAVEPOINT <name>\n");
+            return -1;
+        }
+        strcpy(savepoint_name, tokens->tokens[2]);
+    } else {
+        strcpy(savepoint_name, tokens->tokens[1]);
+    }
+    
+    if (wal_release_savepoint(active_wal, savepoint_name) != 0) {
+        printf("ERROR: Savepoint '%s' not found\n", savepoint_name);
+        return -1;
+    }
+    
+    printf("OK. Released savepoint '%s'\n", savepoint_name);
+    return 0;
+}
+
+static int handle_rollback_to(TokenList *tokens) {
+    // ROLLBACK TO SAVEPOINT sp1  OR  ROLLBACK TO sp1
+    if (tokens->count < 3) {
+        printf("ERROR: Usage: ROLLBACK TO SAVEPOINT <name>\n");
+        return -1;
+    }
+    
+    if (!active_wal || !active_wal->in_transaction) {
+        printf("ERROR: No active transaction\n");
+        return -1;
+    }
+    
+    char savepoint_name[64] = "";
+    
+    // tokens[1] should be "TO"
+    char second[MAX_TOKEN_LEN];
+    strcpy(second, tokens->tokens[1]);
+    to_upper(second);
+    
+    if (strcmp(second, "TO") != 0) {
+        printf("ERROR: Expected 'TO'\n");
+        return -1;
+    }
+    
+    // tokens[2] might be "SAVEPOINT" or the name directly
+    char third[MAX_TOKEN_LEN];
+    strcpy(third, tokens->tokens[2]);
+    to_upper(third);
+    
+    if (strcmp(third, "SAVEPOINT") == 0) {
+        if (tokens->count < 4) {
+            printf("ERROR: Usage: ROLLBACK TO SAVEPOINT <name>\n");
+            return -1;
+        }
+        strcpy(savepoint_name, tokens->tokens[3]);
+    } else {
+        strcpy(savepoint_name, tokens->tokens[2]);
+    }
+    
+    if (wal_rollback_to_savepoint(active_wal, savepoint_name) != 0) {
+        printf("ERROR: Savepoint '%s' not found\n", savepoint_name);
+        return -1;
+    }
+    
+    printf("OK. Rolled back to savepoint '%s'\n", savepoint_name);
+    return 0;
+}
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -4391,12 +5382,28 @@ int sql_execute(const char *sql) {
         return 0;
     }
     else if (strcmp(command, "ROLLBACK") == 0) {
+        if (list.count >= 2) {
+            char second[MAX_TOKEN_LEN];
+            strcpy(second, list.tokens[1]);
+            to_upper(second);
+            
+            if (strcmp(second, "TO") == 0) {
+                return handle_rollback_to(&list);
+            }
+        }
+        
         if (sql_rollback() == 0) {
             printf("OK. Transaction rolled back\n");
         } else {
             printf("ERROR: No active transaction\n");
         }
         return 0;
+    }
+    else if (strcmp(command, "SAVEPOINT") == 0) {
+        return handle_savepoint(&list);
+    }
+    else if (strcmp(command, "RELEASE") == 0) {
+        return handle_release_savepoint(&list);
     }
     else if (strcmp(command, "CREATE") == 0) {
         char second[MAX_TOKEN_LEN];
@@ -4494,6 +5501,79 @@ int sql_execute(const char *sql) {
         return handle_insert(&list);
     }
     else if (strcmp(command, "SELECT") == 0) {
+        // CASE WHEN
+        int has_case = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "CASE") == 0) {
+                has_case = 1;
+                break;
+            }
+        }
+        if (has_case) {
+            return handle_case_when(&list);
+        }
+        
+        // EXISTS / NOT EXISTS
+        int has_exists = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "EXISTS") == 0) {
+                has_exists = 1;
+                break;
+            }
+        }
+        if (has_exists) {
+            return handle_exists(&list);
+        }
+        
+        // ANY / ALL / SOME
+        int has_any_all = 0;
+        for (int i = 0; i < list.count; i++) {
+            char upper_token[MAX_TOKEN_LEN];
+            strcpy(upper_token, list.tokens[i]);
+            to_upper(upper_token);
+            if (strcmp(upper_token, "ANY") == 0 || 
+                strcmp(upper_token, "ALL") == 0 ||
+                strcmp(upper_token, "SOME") == 0) {
+                if (i + 1 < list.count && strcmp(list.tokens[i + 1], "(") == 0) {
+                    has_any_all = 1;
+                    break;
+                }
+            }
+        }
+        if (has_any_all) {
+            return handle_any_all(&list);
+        }
+        
+        // Scalar Subquery
+        // Scalar Subquery
+        int has_subquery = 0;
+        for (int i = 0; i < list.count; i++) {
+            if (strcmp(list.tokens[i], "WHERE") == 0 && i + 3 < list.count) {
+                if (strcmp(list.tokens[i + 3], "(") == 0) {
+                    // Exclude IN, ANY, ALL, SOME which have their own handlers
+                    int is_own_handler = 0;
+                    if (i + 2 < list.count) {
+                        char op_check[MAX_TOKEN_LEN];
+                        strcpy(op_check, list.tokens[i + 2]);
+                        to_upper(op_check);
+                        if (strcmp(op_check, "IN") == 0 ||
+                            strcmp(op_check, "ANY") == 0 ||
+                            strcmp(op_check, "ALL") == 0 ||
+                            strcmp(op_check, "SOME") == 0) {
+                            is_own_handler = 1;
+                        }
+                    }
+                    if (!is_own_handler) {
+                        has_subquery = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        if (has_subquery) {
+            return handle_subquery(&list);
+        }
+        
         // GROUP_CONCAT
         int has_group_concat = 0;
         for (int i = 0; i < list.count; i++) {

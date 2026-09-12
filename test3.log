@@ -1,0 +1,260 @@
+Auth system loaded. 2 user(s) registered.
+HeavenDB SQL Engine initialized.
+Executing SQL script: test3.sql
+========================================
+
+[Line 9] DROP TABLE accounts
+OK. Dropped table 'accounts'
+
+[Line 10] DROP TABLE orders
+OK. Dropped table 'orders'
+
+[Line 11] DROP TABLE users
+OK. Dropped table 'users'
+
+[Line 13] CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, age INTEGER)
+OK. Created table 'users'
+
+[Line 14] CREATE TABLE orders (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, total INTEGER)
+OK. Created table 'orders'
+
+[Line 15] CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, balance INTEGER)
+OK. Created table 'accounts'
+
+[Line 17] INSERT INTO users VALUES (NULL, 'Aditya', 25)
+OK. Inserted 1 row
+
+[Line 18] INSERT INTO users VALUES (NULL, 'Rahul', 15)
+OK. Inserted 1 row
+
+[Line 19] INSERT INTO users VALUES (NULL, 'Priya', 70)
+OK. Inserted 1 row
+
+[Line 20] INSERT INTO users VALUES (NULL, 'Amit', 18)
+OK. Inserted 1 row
+
+[Line 21] INSERT INTO users VALUES (NULL, 'Sneha', 30)
+OK. Inserted 1 row
+
+[Line 23] INSERT INTO orders VALUES (NULL, 1, 500)
+OK. Inserted 1 row
+
+[Line 24] INSERT INTO orders VALUES (NULL, 1, 750)
+OK. Inserted 1 row
+
+[Line 25] INSERT INTO orders VALUES (NULL, 3, 300)
+OK. Inserted 1 row
+
+[Line 26] INSERT INTO orders VALUES (NULL, 5, 900)
+OK. Inserted 1 row
+
+[Line 28] INSERT INTO accounts VALUES (NULL, 'Aditya', 1000)
+OK. Inserted 1 row
+
+[Line 29] INSERT INTO accounts VALUES (NULL, 'Rahul', 500)
+OK. Inserted 1 row
+
+[Line 34] SELECT name, CASE WHEN age < 18 THEN 'minor' ELSE 'adult' END FROM users
+name            category       
+--------------- ---------------
+Aditya          adult          
+Rahul           minor          
+Priya           adult          
+Amit            adult          
+Sneha           adult          
+(5 rows)
+
+[Line 39] SELECT * FROM users WHERE EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
+id              name            age             
+--------------- --------------- --------------- 
+1               Aditya          25              
+3               Priya           70              
+5               Sneha           30              
+(3 rows)
+
+[Line 44] SELECT * FROM users WHERE NOT EXISTS (SELECT * FROM orders WHERE orders.user_id = users.id)
+id              name            age             
+--------------- --------------- --------------- 
+2               Rahul           15              
+4               Amit            18              
+(2 rows)
+
+[Line 49] SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+3               Priya           70              
+(1 rows)
+
+[Line 51] SELECT * FROM users WHERE age = (SELECT MAX(age) FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+3               Priya           70              
+(1 rows)
+
+[Line 53] SELECT * FROM users WHERE age < (SELECT AVG(age) FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+1               Aditya          25              
+2               Rahul           15              
+4               Amit            18              
+5               Sneha           30              
+(4 rows)
+
+[Line 58] SELECT * FROM users WHERE age > ANY (SELECT age FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+1               Aditya          25              
+3               Priya           70              
+4               Amit            18              
+5               Sneha           30              
+(4 rows)
+
+[Line 60] SELECT * FROM users WHERE age > ALL (SELECT age FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+(0 rows)
+
+[Line 62] SELECT * FROM users WHERE age < ANY (SELECT age FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+1               Aditya          25              
+2               Rahul           15              
+4               Amit            18              
+5               Sneha           30              
+(4 rows)
+
+[Line 64] SELECT * FROM users WHERE age < ALL (SELECT age FROM users)
+id              name            age             
+--------------- --------------- --------------- 
+(0 rows)
+
+[Line 69] BEGIN
+OK. Transaction started
+
+[Line 71] INSERT INTO accounts VALUES (NULL, 'Temp1', 100)
+OK. Inserted 1 row (pending commit)
+
+[Line 73] SAVEPOINT sp1
+OK. Savepoint 'sp1' created
+
+[Line 75] INSERT INTO accounts VALUES (NULL, 'Temp2', 200)
+OK. Inserted 1 row (pending commit)
+
+[Line 77] SAVEPOINT sp2
+OK. Savepoint 'sp2' created
+
+[Line 79] INSERT INTO accounts VALUES (NULL, 'Temp3', 300)
+OK. Inserted 1 row (pending commit)
+
+[Line 81] SELECT * FROM accounts
+id              name            balance         
+--------------- --------------- --------------- 
+1               Aditya          1000            
+2               Rahul           500             
+(2 rows)
+
+
+[Line 83] ROLLBACK TO SAVEPOINT sp2
+OK. Rolled back to savepoint 'sp2'
+
+[Line 85] SELECT * FROM accounts
+id              name            balance         
+--------------- --------------- --------------- 
+1               Aditya          1000            
+2               Rahul           500             
+(2 rows)
+
+
+[Line 87] ROLLBACK TO SAVEPOINT sp1
+OK. Rolled back to savepoint 'sp1'
+
+[Line 89] SELECT * FROM accounts
+id              name            balance         
+--------------- --------------- --------------- 
+1               Aditya          1000            
+2               Rahul           500             
+(2 rows)
+
+
+[Line 91] COMMIT
+OK. Transaction committed
+
+[Line 93] SELECT * FROM accounts
+id              name            balance         
+--------------- --------------- --------------- 
+1               Aditya          1000            
+2               Rahul           500             
+3               Temp1           100             
+(3 rows)
+
+
+[Line 98] BEGIN
+OK. Transaction started
+
+[Line 100] INSERT INTO accounts VALUES (NULL, 'ReleaseTest1', 400)
+OK. Inserted 1 row (pending commit)
+
+[Line 102] SAVEPOINT sp3
+OK. Savepoint 'sp3' created
+
+[Line 104] INSERT INTO accounts VALUES (NULL, 'ReleaseTest2', 500)
+OK. Inserted 1 row (pending commit)
+
+[Line 106] RELEASE SAVEPOINT sp3
+OK. Released savepoint 'sp3'
+
+[Line 108] COMMIT
+OK. Transaction committed
+
+[Line 110] SELECT * FROM accounts
+id              name            balance         
+--------------- --------------- --------------- 
+1               Aditya          1000            
+2               Rahul           500             
+3               Temp1           100             
+6               ReleaseTest1    400             
+7               ReleaseTest2    500             
+(5 rows)
+
+
+[Line 115] SELECT * FROM orders
+id              user_id         total           
+--------------- --------------- --------------- 
+1               1               500             
+2               1               750             
+3               3               300             
+4               5               900             
+(4 rows)
+
+
+[Line 117] DELETE FROM users WHERE id = 1
+OK. Deleted 1 row
+
+[Line 119] SELECT * FROM orders
+id              user_id         total           
+--------------- --------------- --------------- 
+3               3               300             
+4               5               900             
+(2 rows)
+
+
+[Line 124] SELECT * FROM users
+id              name            age             
+--------------- --------------- --------------- 
+2               Rahul           15              
+3               Priya           70              
+4               Amit            18              
+5               Sneha           30              
+(4 rows)
+
+
+[Line 126] SELECT COUNT(*) FROM orders
+COUNT: 2
+
+[Line 128] SELECT COUNT(*) FROM accounts
+COUNT: 5
+
+========================================
+Script complete!
+  Commands executed: 53
+  Errors: 0

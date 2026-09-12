@@ -1,0 +1,814 @@
+Auth system loaded. 2 user(s) registered.
+HeavenDB SQL Engine initialized.
+Executing SQL script: test.sql
+========================================
+
+[Line 8] LOGIN admin WITH PASSWORD 'admin123'
+OK. Logged in as 'admin'
+
+[Line 13] DROP TABLE employees
+ERROR: Table 'employees' not found
+
+[Line 14] DROP TABLE departments
+ERROR: Table 'departments' not found
+
+[Line 15] DROP TABLE projects
+ERROR: Table 'projects' not found
+
+[Line 16] DROP TABLE assignments
+ERROR: Table 'assignments' not found
+
+[Line 17] DROP TABLE audit_log
+ERROR: Table 'audit_log' not found
+
+[Line 22] CREATE TABLE employees (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL, email TEXT, salary FLOAT, is_active BOOLEAN, metadata JSON)
+OK. Created table 'employees'
+
+[Line 23] CREATE TABLE departments (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, budget FLOAT, location TEXT)
+OK. Created table 'departments'
+
+[Line 24] CREATE TABLE projects (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, department_id INTEGER, status TEXT)
+OK. Created table 'projects'
+
+[Line 25] CREATE TABLE assignments (id INTEGER PRIMARY KEY AUTO_INCREMENT, employee_id INTEGER, project_id INTEGER, hours INTEGER)
+OK. Created table 'assignments'
+
+[Line 26] CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTO_INCREMENT, action TEXT, details JSON)
+OK. Created table 'audit_log'
+
+[Line 31] INSERT INTO employees VALUES (NULL, 'Aditya', 'aditya@heaven.db', 85000.50, TRUE, '{"role":"engineer","level":3}')
+OK. Inserted 1 row
+
+[Line 32] INSERT INTO employees VALUES (NULL, 'Rahul', 'rahul@heaven.db', 65000.75, TRUE, '{"role":"designer","level":2}')
+OK. Inserted 1 row
+
+[Line 33] INSERT INTO employees VALUES (NULL, 'Priya', 'priya@heaven.db', 95000.00, TRUE, '{"role":"manager","level":4}')
+OK. Inserted 1 row
+
+[Line 34] INSERT INTO employees VALUES (NULL, 'Amit', 'amit@heaven.db', 45000.25, FALSE, '{"role":"intern","level":1}')
+OK. Inserted 1 row
+
+[Line 35] INSERT INTO employees VALUES (NULL, 'Sneha', 'sneha@heaven.db', 75000.00, TRUE, '{"role":"engineer","level":3}')
+OK. Inserted 1 row
+
+[Line 36] INSERT INTO employees VALUES (NULL, 'Vikram', 'vikram@heaven.db', 55000.50, TRUE, '{"role":"analyst","level":2}')
+OK. Inserted 1 row
+
+[Line 41] INSERT INTO departments VALUES (NULL, 'Engineering', 500000.00, 'Bangalore')
+OK. Inserted 1 row
+
+[Line 42] INSERT INTO departments VALUES (NULL, 'Design', 250000.00, 'Mumbai')
+OK. Inserted 1 row
+
+[Line 43] INSERT INTO departments VALUES (NULL, 'Sales', 300000.00, 'Delhi')
+OK. Inserted 1 row
+
+[Line 48] INSERT INTO projects VALUES (NULL, 'HeavenDB', 1, 'active')
+OK. Inserted 1 row
+
+[Line 49] INSERT INTO projects VALUES (NULL, 'UI Redesign', 2, 'active')
+OK. Inserted 1 row
+
+[Line 50] INSERT INTO projects VALUES (NULL, 'Q4 Campaign', 3, 'planning')
+OK. Inserted 1 row
+
+[Line 51] INSERT INTO projects VALUES (NULL, 'Legacy Migration', 1, 'completed')
+OK. Inserted 1 row
+
+[Line 56] INSERT INTO assignments VALUES (NULL, 1, 1, 160)
+OK. Inserted 1 row
+
+[Line 57] INSERT INTO assignments VALUES (NULL, 2, 2, 120)
+OK. Inserted 1 row
+
+[Line 58] INSERT INTO assignments VALUES (NULL, 3, 1, 80)
+OK. Inserted 1 row
+
+[Line 59] INSERT INTO assignments VALUES (NULL, 5, 1, 200)
+OK. Inserted 1 row
+
+[Line 60] INSERT INTO assignments VALUES (NULL, 6, 3, 100)
+OK. Inserted 1 row
+
+[Line 65] INSERT INTO audit_log VALUES (NULL, 'CREATE_USER', '{"user":"admin","timestamp":"2026-09-11"}')
+OK. Inserted 1 row
+
+[Line 66] INSERT INTO audit_log VALUES (NULL, 'LOGIN', '{"user":"admin","ip":"127.0.0.1"}')
+OK. Inserted 1 row
+
+[Line 67] INSERT INTO audit_log VALUES (NULL, 'BACKUP', '{"file":"test_backup.hdb"}')
+OK. Inserted 1 row
+
+[Line 72] SELECT * FROM employees
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+(6 rows)
+
+
+[Line 73] SELECT name, email FROM employees
+name            email           
+--------------- --------------- 
+Aditya          aditya@heaven.db 
+Rahul           rahul@heaven.db 
+Priya           priya@heaven.db 
+Amit            amit@heaven.db  
+Sneha           sneha@heaven.db 
+Vikram          vikram@heaven.db 
+(6 rows)
+
+
+[Line 74] SELECT name, salary, is_active FROM employees
+name            salary          is_active       
+--------------- --------------- --------------- 
+Aditya          85000.50        TRUE            
+Rahul           65000.75        TRUE            
+Priya           95000.00        TRUE            
+Amit            45000.25        FALSE           
+Sneha           75000.00        TRUE            
+Vikram          55000.50        TRUE            
+(6 rows)
+
+
+[Line 75] SELECT * FROM departments
+id              name            budget          location        
+--------------- --------------- --------------- --------------- 
+1               Engineering     500000.00       Bangalore       
+2               Design          250000.00       Mumbai          
+3               Sales           300000.00       Delhi           
+(3 rows)
+
+
+[Line 76] SELECT * FROM projects
+id              name            department_id   status          
+--------------- --------------- --------------- --------------- 
+1               HeavenDB        1               active          
+2               UI Redesign     2               active          
+3               Q4 Campaign     3               planning        
+4               Legacy Migration 1               completed       
+(4 rows)
+
+
+[Line 77] SELECT * FROM assignments
+id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- 
+1               1               1               160             
+2               2               2               120             
+3               3               1               80              
+4               5               1               200             
+5               6               3               100             
+(5 rows)
+
+
+[Line 78] SELECT * FROM audit_log
+id              action          details         
+--------------- --------------- --------------- 
+1               CREATE_USER     {"user":"admin","timestamp":"2026-09-11"} 
+2               LOGIN           {"user":"admin","ip":"127.0.0.1"} 
+3               BACKUP          {"file":"test_backup.hdb"}     
+(3 rows)
+
+
+[Line 83] SELECT name, salary FROM employees WHERE salary > 70000
+name            salary          
+--------------- --------------- 
+(0 rows)
+
+
+[Line 84] SELECT name, salary FROM employees WHERE salary < 60000
+name            salary          
+--------------- --------------- 
+(0 rows)
+
+
+[Line 85] SELECT name, salary FROM employees WHERE salary >= 75000
+name            salary          
+--------------- --------------- 
+(0 rows)
+
+
+[Line 86] SELECT name, salary FROM employees WHERE salary <= 55000
+name            salary          
+--------------- --------------- 
+(0 rows)
+
+
+[Line 91] SELECT * FROM employees WHERE is_active = TRUE
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+(5 rows)
+
+
+[Line 92] SELECT * FROM employees WHERE is_active = FALSE
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+(1 row)
+
+
+[Line 97] SELECT * FROM employees WHERE name = 'Aditya'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+(1 row)
+
+
+[Line 98] SELECT * FROM employees WHERE email = 'rahul@heaven.db'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+(1 row)
+
+
+[Line 103] SELECT * FROM employees WHERE salary > 60000 AND is_active = TRUE
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+
+[Line 104] SELECT * FROM employees WHERE name = 'Aditya' OR name = 'Priya'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+(2 rows)
+
+
+[Line 105] SELECT * FROM employees WHERE is_active = TRUE AND salary > 70000
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+
+[Line 110] SELECT name, salary FROM employees ORDER BY salary ASC
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+(6 rows)
+
+[Line 111] SELECT name, salary FROM employees ORDER BY salary DESC
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+(6 rows)
+
+[Line 116] SELECT * FROM employees LIMIT 3
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        
+2               Rahul           rahul@heaven.db 65000.75        
+3               Priya           priya@heaven.db 95000.00        
+(3 rows)
+
+[Line 117] SELECT * FROM employees LIMIT 3 OFFSET 2
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+3               Priya           priya@heaven.db 95000.00        
+4               Amit            amit@heaven.db  45000.25        
+5               Sneha           sneha@heaven.db 75000.00        
+(3 rows)
+
+[Line 122] SELECT COUNT(*) FROM employees
+COUNT: 6
+
+[Line 123] SELECT SUM(salary) FROM employees
+SUM(salary): 0
+
+[Line 124] SELECT AVG(salary) FROM employees
+AVG(salary): 0
+
+[Line 125] SELECT MIN(salary) FROM employees
+MIN(salary): 0
+
+[Line 126] SELECT MAX(salary) FROM employees
+MAX(salary): 0
+
+[Line 131] SELECT GROUP_CONCAT(name) FROM employees
+GROUP_CONCAT(name)
+----------------------------------------
+Aditya,Rahul,Priya,Amit,Sneha,Vikram
+(1 row)
+
+[Line 136] SELECT UPPER(name) FROM employees
+result
+------
+ADITYA         
+RAHUL          
+PRIYA          
+AMIT           
+SNEHA          
+VIKRAM         
+(6 rows)
+
+[Line 137] SELECT LOWER(name) FROM employees
+result
+------
+aditya         
+rahul          
+priya          
+amit           
+sneha          
+vikram         
+(6 rows)
+
+[Line 138] SELECT LENGTH(name) FROM employees
+result
+------
+6              
+5              
+5              
+4              
+5              
+6              
+(6 rows)
+
+[Line 139] SELECT LENGTH(email) FROM employees
+result
+------
+16             
+15             
+15             
+14             
+15             
+16             
+(6 rows)
+
+[Line 140] SELECT CONCAT(name, ' <', email, '>') FROM employees
+result
+------
+Aditya <aditya@heaven.db>
+Rahul <rahul@heaven.db>
+Priya <priya@heaven.db>
+Amit <amit@heaven.db>
+Sneha <sneha@heaven.db>
+Vikram <vikram@heaven.db>
+(6 rows)
+
+[Line 141] SELECT CONCAT('Employee: ', name, ' - Salary: ', salary) FROM employees
+result
+------
+Employee: Aditya - Salary: 85000.50
+Employee: Rahul - Salary: 65000.75
+Employee: Priya - Salary: 95000.00
+Employee: Amit - Salary: 45000.25
+Employee: Sneha - Salary: 75000.00
+Employee: Vikram - Salary: 55000.50
+(6 rows)
+
+[Line 146] SELECT ABS(-42)
+result
+------
+42.0000        
+(1 row)
+
+[Line 147] SELECT ROUND(3.14159265, 4)
+result
+------
+3.1416         
+(1 row)
+
+[Line 148] SELECT ROUND(2.5)
+result
+------
+3              
+(1 row)
+
+[Line 149] SELECT FLOOR(99.99)
+result
+------
+99             
+(1 row)
+
+[Line 150] SELECT CEIL(0.01)
+result
+------
+1              
+(1 row)
+
+[Line 151] SELECT MOD(100, 7)
+result
+------
+2              
+(1 row)
+
+[Line 156] SELECT * FROM employees WHERE name LIKE 'A%'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        
+4               Amit            amit@heaven.db  45000.25        
+(2 rows)
+
+[Line 157] SELECT * FROM employees WHERE name LIKE 'S%'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+5               Sneha           sneha@heaven.db 75000.00        
+(1 rows)
+
+[Line 158] SELECT * FROM employees WHERE email LIKE '%@heaven.db'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+[Line 163] SELECT name, salary FROM employees WHERE salary BETWEEN 50000 AND 80000
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+(0 rows)
+
+[Line 168] SELECT * FROM employees WHERE id IN (1, 3, 5)
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        
+3               Priya           priya@heaven.db 95000.00        
+5               Sneha           sneha@heaven.db 75000.00        
+(3 rows)
+
+[Line 169] SELECT * FROM projects WHERE status IN ('active', 'planning')
+id              name            department_id   status          
+--------------- --------------- --------------- --------------- 
+(0 rows)
+
+[Line 174] SELECT * FROM employees INNER JOIN assignments ON employees.id = assignments.employee_id
+id              name            email           salary          is_active       metadata        id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        1               1               1               160             
+2               Rahul           rahul@heaven.db 65000.75        2               2               2               120             
+3               Priya           priya@heaven.db 95000.00        3               3               1               80              
+5               Sneha           sneha@heaven.db 75000.00        4               5               1               200             
+6               Vikram          vikram@heaven.db 55000.50        5               6               3               100             
+(5 rows)
+
+
+[Line 175] SELECT * FROM employees LEFT JOIN assignments ON employees.id = assignments.employee_id
+id              name            email           salary          is_active       metadata        id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        1               1               1               160             
+2               Rahul           rahul@heaven.db 65000.75        2               2               2               120             
+3               Priya           priya@heaven.db 95000.00        3               3               1               80              
+4               Amit            amit@heaven.db  45000.25        NULL            NULL            NULL            NULL            
+5               Sneha           sneha@heaven.db 75000.00        4               5               1               200             
+6               Vikram          vikram@heaven.db 55000.50        5               6               3               100             
+(6 rows)
+
+
+[Line 176] SELECT * FROM employees RIGHT JOIN assignments ON employees.id = assignments.employee_id
+id              name            email           salary          is_active       metadata        id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  1               1               1               160             
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  2               2               2               120             
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   3               3               1               80              
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  4               5               1               200             
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   5               6               3               100             
+(5 rows)
+
+
+[Line 177] SELECT * FROM employees FULL JOIN assignments ON employees.id = assignments.employee_id
+id              name            email           salary          is_active       metadata        id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  1               1               1               160             
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  2               2               2               120             
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   3               3               1               80              
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    NULL            NULL            NULL            NULL            
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  4               5               1               200             
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   5               6               3               100             
+(6 rows)
+
+
+[Line 178] SELECT * FROM employees CROSS JOIN departments
+id              name            email           salary          is_active       metadata        id              name            budget          location        
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  1               Engineering     500000.00       Bangalore       
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  2               Design          250000.00       Mumbai          
+1               Aditya          aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  3               Sales           300000.00       Delhi           
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  1               Engineering     500000.00       Bangalore       
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  2               Design          250000.00       Mumbai          
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  3               Sales           300000.00       Delhi           
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   1               Engineering     500000.00       Bangalore       
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   2               Design          250000.00       Mumbai          
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   3               Sales           300000.00       Delhi           
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    1               Engineering     500000.00       Bangalore       
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    2               Design          250000.00       Mumbai          
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    3               Sales           300000.00       Delhi           
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  1               Engineering     500000.00       Bangalore       
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  2               Design          250000.00       Mumbai          
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  3               Sales           300000.00       Delhi           
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   1               Engineering     500000.00       Bangalore       
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   2               Design          250000.00       Mumbai          
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   3               Sales           300000.00       Delhi           
+(18 rows)
+
+
+[Line 183] SELECT name FROM employees UNION SELECT name FROM departments
+name           
+---------------
+Aditya         
+Rahul          
+Priya          
+Amit           
+Sneha          
+Vikram         
+Engineering    
+Design         
+Sales          
+
+(9 rows)
+
+[Line 184] SELECT name FROM employees UNION ALL SELECT name FROM projects
+name           
+---------------
+Aditya         
+Rahul          
+Priya          
+Amit           
+Sneha          
+Vikram         
+HeavenDB       
+UI Redesign    
+Q4 Campaign    
+Legacy Migration
+
+(10 rows)
+
+[Line 189] UPDATE employees SET salary = 90000.00 WHERE id = 1
+OK. Updated 1 row
+
+[Line 190] UPDATE employees SET is_active = FALSE WHERE id = 4
+OK. Updated 1 row
+
+[Line 191] UPDATE employees SET name = 'Aditya SDE' WHERE id = 1
+OK. Updated 1 row
+
+[Line 192] SELECT * FROM employees WHERE id = 1
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya SDE      aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+(1 row)
+
+
+[Line 193] SELECT * FROM employees WHERE id = 4
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+(1 row)
+
+
+[Line 198] DELETE FROM assignments WHERE id = 5
+OK. Deleted 1 row
+
+[Line 199] SELECT * FROM assignments
+id              employee_id     project_id      hours           
+--------------- --------------- --------------- --------------- 
+1               1               1               160             
+2               2               2               120             
+3               3               1               80              
+4               5               1               200             
+(4 rows)
+
+
+[Line 204] BEGIN
+OK. Transaction started
+
+[Line 205] INSERT INTO employees VALUES (NULL, 'Temp1', 't1@x.com', 1000.00, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 206] COMMIT
+OK. Transaction committed
+
+[Line 207] BEGIN
+OK. Transaction started
+
+[Line 208] INSERT INTO employees VALUES (NULL, 'Temp2', 't2@x.com', 2000.00, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 209] COMMIT
+OK. Transaction committed
+
+[Line 210] BEGIN
+OK. Transaction started
+
+[Line 211] INSERT INTO employees VALUES (NULL, 'Temp3', 't3@x.com', 3000.00, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 212] ROLLBACK
+OK. Transaction rolled back
+
+[Line 213] BEGIN
+OK. Transaction started
+
+[Line 214] INSERT INTO employees VALUES (NULL, 'Temp4', 't4@x.com', 4000.00, TRUE, '{}')
+OK. Inserted 1 row (pending commit)
+
+[Line 215] COMMIT
+OK. Transaction committed
+
+[Line 216] SELECT * FROM employees WHERE name LIKE 'Temp%'
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+7               Temp1           t1@x.com        1000.00         
+8               Temp2           t2@x.com        2000.00         
+10              Temp4           t4@x.com        4000.00         
+(3 rows)
+
+[Line 221] CREATE VIEW active_employees AS SELECT * FROM employees WHERE is_active = TRUE
+OK. Created view 'active_employees'
+
+[Line 222] SELECT * FROM active_employees
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya SDE      aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+7               Temp1           t1@x.com        1000.00         TRUE            {}                             
+8               Temp2           t2@x.com        2000.00         TRUE            {}                             
+10              Temp4           t4@x.com        4000.00         TRUE            {}                             
+(8 rows)
+
+
+[Line 223] CREATE VIEW high_earners AS SELECT name, salary FROM employees WHERE salary > 70000
+OK. Created view 'high_earners'
+
+[Line 224] SELECT * FROM high_earners
+name            salary          
+--------------- --------------- 
+(0 rows)
+
+
+[Line 225] DROP VIEW high_earners
+OK. Dropped view 'high_earners'
+
+[Line 226] DROP VIEW active_employees
+OK. Dropped view 'active_employees'
+
+[Line 231] ALTER TABLE employees ADD COLUMN phone TEXT
+OK. Added column 'phone'
+
+[Line 232] ALTER TABLE employees ADD COLUMN bonus FLOAT
+OK. Added column 'bonus'
+
+[Line 233] SELECT * FROM employees
+id              name            email           salary          is_active       metadata        phone           bonus           
+--------------- --------------- --------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya SDE      aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}                  0.00            
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}                  0.00            
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}                   0.00            
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}                    0.00            
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}                  0.00            
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}                   0.00            
+7               Temp1           t1@x.com        1000.00         TRUE            {}                                             0.00            
+8               Temp2           t2@x.com        2000.00         TRUE            {}                                             0.00            
+10              Temp4           t4@x.com        4000.00         TRUE            {}                                             0.00            
+(9 rows)
+
+
+[Line 234] ALTER TABLE employees DROP COLUMN phone
+OK. Dropped column 'phone'
+
+[Line 235] ALTER TABLE employees DROP COLUMN bonus
+OK. Dropped column 'bonus'
+
+[Line 236] SELECT * FROM employees
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya SDE      aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+7               Temp1           t1@x.com        1000.00         TRUE            {}                             
+8               Temp2           t2@x.com        2000.00         TRUE            {}                             
+10              Temp4           t4@x.com        4000.00         TRUE            {}                             
+(9 rows)
+
+
+[Line 241] CREATE INDEX idx_emp_salary ON employees(salary)
+OK. Index 'idx_emp_salary' registered (non-integer column, no B-Tree)
+
+[Line 242] CREATE INDEX idx_emp_name ON employees(name)
+OK. Index 'idx_emp_name' registered (non-integer column, no B-Tree)
+
+[Line 247] SHOW TABLES
+Table Name                     Columns   
+------------------------------ -------   
+users                          5         
+orders                         2         
+products                       4         
+admins                         3         
+employees                      6         
+departments                    4         
+projects                       4         
+assignments                    4         
+audit_log                      3         
+
+(9 tables)
+
+[Line 248] DESCRIBE employees
+Table: employees
+Column               Type         Null       Key       
+------               ----         ----       ---       
+id                   INTEGER      NOT NULL   PRIMARY   
+name                 TEXT         NOT NULL             
+email                TEXT         YES                  
+salary               FLOAT        YES                  
+is_active            UNKNOWN      YES                  
+metadata             JSON         YES                  
+
+(6 columns)
+
+[Line 249] DESCRIBE departments
+Table: departments
+Column               Type         Null       Key       
+------               ----         ----       ---       
+id                   INTEGER      NOT NULL   PRIMARY   
+name                 TEXT         YES                  
+budget               FLOAT        YES                  
+location             TEXT         YES                  
+
+(4 columns)
+
+[Line 250] DESCRIBE projects
+Table: projects
+Column               Type         Null       Key       
+------               ----         ----       ---       
+id                   INTEGER      NOT NULL   PRIMARY   
+name                 TEXT         YES                  
+department_id        INTEGER      YES                  
+status               TEXT         YES                  
+
+(4 columns)
+
+[Line 251] EXPLAIN SELECT * FROM employees WHERE salary > 50000
+Query Plan:
+-----------
+  Table: employees
+  Rows: 9
+  Columns: 6
+  Filter: WHERE clause detected
+  Index: B-Tree on INTEGER columns
+  Strategy: Index scan (O(log n))
+
+[Line 252] EXPLAIN SELECT * FROM employees WHERE is_active = TRUE
+Query Plan:
+-----------
+  Table: employees
+  Rows: 9
+  Columns: 6
+  Filter: WHERE clause detected
+  Index: B-Tree on INTEGER columns
+  Strategy: Index scan (O(log n))
+
+[Line 257] BACKUP TO 'test2_backup.hdb'
+OK. Backup saved to 'test2_backup.hdb'
+
+[Line 262] SELECT * FROM employees
+id              name            email           salary          is_active       metadata        
+--------------- --------------- --------------- --------------- --------------- --------------- 
+1               Aditya SDE      aditya@heaven.db 85000.50        TRUE            {"role":"engineer","level":3}  
+2               Rahul           rahul@heaven.db 65000.75        TRUE            {"role":"designer","level":2}  
+3               Priya           priya@heaven.db 95000.00        TRUE            {"role":"manager","level":4}   
+4               Amit            amit@heaven.db  45000.25        FALSE           {"role":"intern","level":1}    
+5               Sneha           sneha@heaven.db 75000.00        TRUE            {"role":"engineer","level":3}  
+6               Vikram          vikram@heaven.db 55000.50        TRUE            {"role":"analyst","level":2}   
+7               Temp1           t1@x.com        1000.00         TRUE            {}                             
+8               Temp2           t2@x.com        2000.00         TRUE            {}                             
+10              Temp4           t4@x.com        4000.00         TRUE            {}                             
+(9 rows)
+
+
+[Line 263] SELECT COUNT(*) FROM employees
+COUNT: 9
+
+[Line 264] SELECT COUNT(*) FROM departments
+COUNT: 3
+
+[Line 265] SELECT COUNT(*) FROM projects
+COUNT: 4
+
+[Line 266] SELECT COUNT(*) FROM assignments
+COUNT: 4
+
+========================================
+Script complete!
+  Commands executed: 126
+  Errors: 5

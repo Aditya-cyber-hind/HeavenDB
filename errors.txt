@@ -1,0 +1,15 @@
+7:ERROR: Table 'transactions' not found
+10:ERROR: Table 'products' not found
+13:ERROR: Table 'categories' not found
+16:ERROR: Table 'customers' not found
+19:ERROR: Table 'orders' not found
+22:ERROR: Table 'employees' not found
+25:ERROR: Table 'departments' not found
+28:ERROR: Table 'audit_log' not found
+31:ERROR: Table 'users' not found
+1034:ERROR: Invalid subquery
+1037:ERROR: Invalid subquery
+1040:ERROR: Invalid subquery
+1689:ERROR: Column 'CONCAT' not found
+1859:ERROR: Column 'age' not found
+1862:ERROR: Column 'age' not found

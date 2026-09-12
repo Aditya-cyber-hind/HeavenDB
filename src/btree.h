@@ -3,8 +3,8 @@
 
 #include <stddef.h>
 
-#define BTREE_MAX_KEYS 4  // Max keys per node (small for testing)
-#define BTREE_MIN_KEYS 2  // Min keys per node (half of max)
+#define BTREE_MAX_KEYS 6
+#define BTREE_MIN_KEYS 3
 
 typedef struct BTreeNode {
     int *keys;                  // Array of keys (integers for now)

@@ -25,16 +25,21 @@ static void split_child(BTreeNode *parent, int index, BTreeNode *child) {
     BTreeNode *new_node = node_create(child->is_leaf);
     new_node->num_keys = BTREE_MIN_KEYS;
     
-    // Copy the last half of keys and values to the new node
-    for (int i = 0; i < BTREE_MIN_KEYS; i++) {
-        new_node->keys[i] = child->keys[i + BTREE_MIN_KEYS + 1];
-        new_node->values[i] = child->values[i + BTREE_MIN_KEYS + 1];
+    // Copy the last BTREE_MIN_KEYS keys to the new node
+    // Starting from index BTREE_MIN_KEYS + 1
+    int copy_start = BTREE_MIN_KEYS + 1;
+    int keys_to_copy = child->num_keys - copy_start;
+    
+    for (int i = 0; i < keys_to_copy; i++) {
+        new_node->keys[i] = child->keys[copy_start + i];
+        new_node->values[i] = child->values[copy_start + i];
     }
+    new_node->num_keys = keys_to_copy;
     
     // If not leaf, copy children too
     if (!child->is_leaf) {
-        for (int i = 0; i <= BTREE_MIN_KEYS; i++) {
-            new_node->children[i] = child->children[i + BTREE_MIN_KEYS + 1];
+        for (int i = 0; i <= keys_to_copy; i++) {
+            new_node->children[i] = child->children[copy_start + i];
         }
     }
     
