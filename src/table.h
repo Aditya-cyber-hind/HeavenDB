@@ -14,7 +14,9 @@ typedef enum {
     TYPE_FLOAT,
     TYPE_UUID,
     TYPE_JSON,
-    TYPE_BOOLEAN
+    TYPE_BOOLEAN,
+    TYPE_DATE,
+    TYPE_TIMESTAMP
 } ColumnType;
 
 typedef struct {

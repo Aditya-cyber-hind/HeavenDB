@@ -4,7 +4,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
-#include <time.h>
 #include "btree.h"
 #include "wal.h"
 #include "auth.h"
@@ -120,9 +119,7 @@ int sql_save(void) {
                     }
                     case TYPE_TEXT:
                     case TYPE_UUID:
-                    case TYPE_JSON:
-                    case TYPE_DATE:
-                    case TYPE_TIMESTAMP: {
+                    case TYPE_JSON: {
                         char *str = (char*)row[c];
                         uint32_t str_len = (uint32_t)strlen(str);
                         fwrite(&str_len, sizeof(uint32_t), 1, fp);
@@ -284,9 +281,7 @@ int sql_load(void) {
                     }
                     case TYPE_TEXT:
                     case TYPE_UUID:
-                    case TYPE_JSON:
-                    case TYPE_DATE:
-                    case TYPE_TIMESTAMP: {
+                    case TYPE_JSON: {
                         uint32_t str_len;
                         if (fread(&str_len, sizeof(uint32_t), 1, fp) != 1) {
                             free(values);
@@ -541,12 +536,6 @@ static void print_table(Table *table, int *column_indices, int col_count) {
                     break;
                 case TYPE_JSON:
                     printf("%-30s ", (char*)row[idx]);
-                    break;
-                case TYPE_DATE:
-                    printf("%-15s ", (char*)row[idx]);
-                    break;
-                case TYPE_TIMESTAMP:
-                    printf("%-25s ", (char*)row[idx]);
                     break;
                 case TYPE_FLOAT:
                     printf("%-15.2f ", *(double*)row[idx]);
@@ -1336,10 +1325,6 @@ static int handle_create_table(TokenList *tokens) {
             type = TYPE_JSON;
         } else if (strcmp(col_type, "BOOLEAN") == 0 || strcmp(col_type, "BOOL") == 0) {
             type = TYPE_BOOLEAN;
-        } else if (strcmp(col_type, "DATE") == 0) {
-            type = TYPE_DATE;
-        } else if (strcmp(col_type, "TIMESTAMP") == 0 || strcmp(col_type, "DATETIME") == 0) {
-            type = TYPE_TIMESTAMP;
         } else if (strcmp(col_type, "FLOAT") == 0 || strcmp(col_type, "DOUBLE") == 0) {
             type = TYPE_FLOAT;
         } else {
@@ -1674,64 +1659,6 @@ static int handle_insert(TokenList *tokens) {
             continue;
         }
         
-        // Handle NOW() as a single value
-        if (strcmp(tokens->tokens[i], "NOW") == 0 &&
-            i + 2 < tokens->count &&
-            strcmp(tokens->tokens[i+1], "(") == 0 &&
-            strcmp(tokens->tokens[i+2], ")") == 0) {
-            
-            if (table->columns[col_idx].type == TYPE_TIMESTAMP ||
-                table->columns[col_idx].type == TYPE_DATE) {
-                char *str = (char*)malloc(64);
-                time_t t = time(NULL);
-                struct tm *tm_info = localtime(&t);
-                if (table->columns[col_idx].type == TYPE_TIMESTAMP) {
-                    strftime(str, 64, "%Y-%m-%d %H:%M:%S", tm_info);
-                } else {
-                    strftime(str, 64, "%Y-%m-%d", tm_info);
-                }
-                values[col_idx] = str;
-            } else {
-                printf("ERROR: NOW() used for non-date column\n");
-                for (int j = 0; j < col_idx; j++) free(values[j]);
-                free(values);
-                return -1;
-            }
-            
-            col_idx++;
-            i += 3;
-            continue;
-        }
-        
-        // Handle CURRENT_DATE() as a single value
-        if (strcmp(tokens->tokens[i], "CURRENT_DATE") == 0 &&
-            i + 2 < tokens->count &&
-            strcmp(tokens->tokens[i+1], "(") == 0 &&
-            strcmp(tokens->tokens[i+2], ")") == 0) {
-            
-            if (table->columns[col_idx].type == TYPE_DATE ||
-                table->columns[col_idx].type == TYPE_TIMESTAMP) {
-                char *str = (char*)malloc(64);
-                time_t t = time(NULL);
-                struct tm *tm_info = localtime(&t);
-                if (table->columns[col_idx].type == TYPE_DATE) {
-                    strftime(str, 64, "%Y-%m-%d", tm_info);
-                } else {
-                    strftime(str, 64, "%Y-%m-%d %H:%M:%S", tm_info);
-                }
-                values[col_idx] = str;
-            } else {
-                printf("ERROR: CURRENT_DATE() used for non-date column\n");
-                for (int j = 0; j < col_idx; j++) free(values[j]);
-                free(values);
-                return -1;
-            }
-            
-            col_idx++;
-            i += 3;
-            continue;
-        }
-        
         switch (table->columns[col_idx].type) {
             case TYPE_INTEGER: {
                 int *val = (int*)malloc(sizeof(int));
@@ -1785,13 +1712,6 @@ static int handle_insert(TokenList *tokens) {
                     strncpy(str, tokens->tokens[i], 36);
                     str[36] = '\0';
                 }
-                values[col_idx] = str;
-                break;
-            }
-            case TYPE_DATE:
-            case TYPE_TIMESTAMP: {
-                char *str = (char*)malloc(strlen(tokens->tokens[i]) + 1);
-                strcpy(str, tokens->tokens[i]);
                 values[col_idx] = str;
                 break;
             }
@@ -1866,8 +1786,6 @@ static int handle_insert(TokenList *tokens) {
                 case TYPE_TEXT:
                 case TYPE_UUID:
                 case TYPE_JSON:
-                case TYPE_DATE:
-                case TYPE_TIMESTAMP:
                     snprintf(buf, sizeof(buf), "%s", (char*)values[j]);
                     break;
                 case TYPE_FLOAT:
@@ -5557,130 +5475,6 @@ static int handle_json_function(TokenList *tokens) {
     return 0;
 }
 
-static int handle_date_function(TokenList *tokens) {
-    if (tokens->count < 3) return -1;
-    
-    char func_name[32];
-    strcpy(func_name, tokens->tokens[1]);
-    to_upper(func_name);
-    
-    char *paren = strchr(func_name, '(');
-    if (paren) *paren = '\0';
-    
-    printf("result\n");
-    printf("------\n");
-    
-    // NOW() - current timestamp
-    if (strcmp(func_name, "NOW") == 0) {
-        time_t t = time(NULL);
-        struct tm *tm_info = localtime(&t);
-        char buf[64];
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm_info);
-        printf("%-25s\n", buf);
-        printf("(1 row)\n");
-        return 0;
-    }
-    
-    // CURRENT_DATE() - current date
-    if (strcmp(func_name, "CURRENT_DATE") == 0) {
-        time_t t = time(NULL);
-        struct tm *tm_info = localtime(&t);
-        char buf[64];
-        strftime(buf, sizeof(buf), "%Y-%m-%d", tm_info);
-        printf("%-15s\n", buf);
-        printf("(1 row)\n");
-        return 0;
-    }
-    
-    // For functions that need a column: YEAR(col), MONTH(col), DAY(col)
-    int from_idx = -1;
-    for (int i = 1; i < tokens->count; i++) {
-        if (strcmp(tokens->tokens[i], "FROM") == 0) {
-            from_idx = i;
-            break;
-        }
-    }
-    
-    if (from_idx == -1) {
-        printf("ERROR: This function requires FROM clause\n");
-        return -1;
-    }
-    
-    char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[from_idx + 1]);
-    
-    Table *table = find_table(table_name);
-    if (!table) {
-        printf("ERROR: Table '%s' not found\n", table_name);
-        return -1;
-    }
-    
-    // Find the column argument
-    int arg_start = -1;
-    for (int i = 1; i < tokens->count; i++) {
-        if (strcmp(tokens->tokens[i], "(") == 0) {
-            arg_start = i + 1;
-            break;
-        }
-    }
-    
-    if (arg_start == -1 || arg_start >= tokens->count) {
-        printf("ERROR: Invalid function syntax\n");
-        return -1;
-    }
-    
-    char col_name[64];
-    strcpy(col_name, tokens->tokens[arg_start]);
-    
-    // Handle YEAR(col), MONTH(col), DAY(col)
-    if (strcmp(func_name, "YEAR") == 0 ||
-        strcmp(func_name, "MONTH") == 0 ||
-        strcmp(func_name, "DAY") == 0) {
-        
-        int col_idx = table_get_column_index(table, col_name);
-        if (col_idx == -1) {
-            printf("ERROR: Column '%s' not found\n", col_name);
-            return -1;
-        }
-        
-        for (size_t r = 0; r < table->row_count; r++) {
-            void **row = (void**)table->rows[r];
-            char *date_str = (char*)row[col_idx];
-            
-            if (date_str == NULL || strlen(date_str) < 10) {
-                printf("%-15s\n", "(null)");
-                continue;
-            }
-            
-            int result = 0;
-            if (strcmp(func_name, "YEAR") == 0) {
-                char buf[5];
-                strncpy(buf, date_str, 4);
-                buf[4] = '\0';
-                result = atoi(buf);
-            } else if (strcmp(func_name, "MONTH") == 0) {
-                char buf[3];
-                strncpy(buf, date_str + 5, 2);
-                buf[2] = '\0';
-                result = atoi(buf);
-            } else if (strcmp(func_name, "DAY") == 0) {
-                char buf[3];
-                strncpy(buf, date_str + 8, 2);
-                buf[2] = '\0';
-                result = atoi(buf);
-            }
-            
-            printf("%-15d\n", result);
-        }
-        
-        printf("(%zu rows)\n", table->row_count);
-        return 0;
-    }
-    
-    printf("ERROR: Unknown date function '%s'\n", func_name);
-    return -1;
-}
-
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -5696,7 +5490,7 @@ int sql_execute(const char *sql) {
         return handle_cte(&list);
     }
     
-    // String, JSON, Date functions (first word check)
+    // String functions
     if (strcmp(command, "SELECT") == 0 && list.count > 1) {
         char first_word[MAX_TOKEN_LEN];
         strcpy(first_word, list.tokens[1]);
@@ -5704,23 +5498,11 @@ int sql_execute(const char *sql) {
         
         char *paren = strchr(first_word, '(');
         if (paren) *paren = '\0';
-        
-        // Date/Time functions
-        if (strcmp(first_word, "NOW") == 0 ||
-            strcmp(first_word, "CURRENT_DATE") == 0 ||
-            strcmp(first_word, "YEAR") == 0 ||
-            strcmp(first_word, "MONTH") == 0 ||
-            strcmp(first_word, "DAY") == 0) {
-            return handle_date_function(&list);
-        }
-        
-        // JSON functions
         if (strcmp(first_word, "JSON_EXTRACT") == 0 ||
             strcmp(first_word, "JSON_SET") == 0) {
             return handle_json_function(&list);
         }
         
-        // String functions
         if (strcmp(first_word, "UPPER") == 0 ||
             strcmp(first_word, "LOWER") == 0 ||
             strcmp(first_word, "LENGTH") == 0 ||
@@ -5731,7 +5513,6 @@ int sql_execute(const char *sql) {
             return handle_string_function(&list);
         }
         
-        // Math functions
         if (strcmp(first_word, "ABS") == 0 ||
             strcmp(first_word, "ROUND") == 0 ||
             strcmp(first_word, "FLOOR") == 0 ||
@@ -5921,6 +5702,7 @@ int sql_execute(const char *sql) {
             return handle_any_all(&list);
         }
         
+        // Scalar Subquery
         // Scalar Subquery
         int has_subquery = 0;
         for (int i = 0; i < list.count; i++) {

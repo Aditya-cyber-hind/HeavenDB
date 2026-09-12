@@ -80,7 +80,9 @@ int table_insert(Table *table, void **values) {
             }
             case TYPE_TEXT:
             case TYPE_UUID:
-            case TYPE_JSON: {
+            case TYPE_JSON:
+            case TYPE_DATE:
+            case TYPE_TIMESTAMP: {
                 char *str = (char*)values[i];
                 char *copy = (char*)malloc(strlen(str) + 1);
                 strcpy(copy, str);
@@ -101,7 +103,9 @@ int table_insert(Table *table, void **values) {
         if (table->columns[i].is_not_null) {
             if (table->columns[i].type == TYPE_TEXT || 
                 table->columns[i].type == TYPE_UUID ||
-                table->columns[i].type == TYPE_JSON) {
+                table->columns[i].type == TYPE_JSON ||
+                table->columns[i].type == TYPE_DATE ||
+                table->columns[i].type == TYPE_TIMESTAMP) {
                 char *str = (char*)row[i];
                 if (str && strlen(str) == 0) {
                     printf("ERROR: Column '%s' cannot be NULL\n", table->columns[i].name);
@@ -126,9 +130,7 @@ int table_insert(Table *table, void **values) {
                         free(row);
                         return -1;
                     }
-                } else if (table->columns[i].type == TYPE_TEXT || 
-                           table->columns[i].type == TYPE_UUID ||
-                           table->columns[i].type == TYPE_JSON) {
+                } else {
                     if (strcmp((char*)existing[i], (char*)row[i]) == 0) {
                         printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
                         for (int j = 0; j < table->column_count; j++) free(row[j]);
