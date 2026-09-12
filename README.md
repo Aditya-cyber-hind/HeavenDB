@@ -14,7 +14,7 @@
 [![Tests](https://img.shields.io/badge/tests-11%20unit%20%2B%20282%20integration-22c55e?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 [![Security](https://img.shields.io/badge/PBKDF2-100k%20iterations-ef4444?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 
-**~65,000 ops/sec on a 1M-key working set** (main memory, single-threaded, hashmap layer).
+**~65,000 ops/sec on a 1M-key working set** (main memory, single-threaded, hashmap layer, measured on a 4-core Windows laptop — your numbers will differ).
 
 [Features](#-features) · [Architecture](#-architecture) · [Build](#-building) · [Limitations](#️-known-limitations) · [SQL Reference](#-sql-reference) · [Roadmap](#-roadmap)
 
@@ -162,10 +162,9 @@ DAY(date)
 
 - 🚀 **In-memory hash map** — O(1) key-value lookups
 - 🌳 **B-Tree indexes** — O(log n) range queries on `INTEGER` columns
-- 📝 **Write-Ahead Log** — real-time disk writes for crash recovery
+- 📝 **Write-Ahead Log** — real-time disk writes during transactions
 - 💾 **Atomic saves** — temp file + rename prevents corruption on crash
 - 📦 **Group Commit buffer** — batched disk writes
-- 🗄️ **Append-only `.hdb` format** — persisted state
 - 🔒 **Global write lock** — single-process safety
 - ⛓️ **FK CASCADE** — `ON DELETE CASCADE` referential integrity
 
@@ -191,11 +190,12 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 - **`GROUP BY`, `ORDER BY`, and `JOIN` are O(n²)** naive algorithms. Fine for thousands of rows; not for millions.
 - **B-Tree indexes support only `INTEGER` columns.** `TEXT`, `UUID`, `DATE` columns do full table scans.
 
-### 📝 Write-Ahead Log (WAL)
+### 📝 Write-Ahead Log (WAL) and Durability
 - The WAL records every `INSERT` to disk in **real-time** during a transaction.
-- On startup, `wal_recover()` checks for an interrupted transaction and discards it.
-- **Uncommitted changes are rolled back.** Committed changes are persisted via the atomic save.
-- WAL does **not** yet support full replay of committed operations — the main `.hdb` file is authoritative.
+- On startup, `wal_recover()` checks for an interrupted transaction and discards it (**undo-only**).
+- **Uncommitted changes are rolled back.**
+- **Durability for committed transactions comes from the atomic `.hdb` save, not the WAL.** When you `COMMIT`, the entire database is written via temp-file-plus-rename. If that atomic save fails (disk full, permissions, etc.), the commit fails.
+- The WAL does **not** replay committed operations — the main `.hdb` file is authoritative. Full redo-style recovery is on the roadmap.
 
 ### 🔗 Joins
 - `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` joins work with **simple `ON table1.col = table2.col` equality conditions only.**
@@ -213,7 +213,6 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 - **11 unit tests** for `hashmap.c` (all passing).
 - **282-command integration test** with 0 errors.
 - **No unit tests** yet for `btree.c`, `wal.c`, or `buffer.c`.
-- **No GitHub Actions CI** running on every commit.
 
 ### 🌍 Portability
 - The networking layer uses **Winsock** (Windows-only). Linux/macOS require a POSIX port.
@@ -238,7 +237,7 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 
 ## 📊 Performance
 
-**Honest benchmarks** on a standard development laptop (Windows, 4-core CPU, 8GB RAM). All numbers are reproducible with `heavendb benchmark 100000`.
+**Honest benchmarks** on a standard development laptop (Windows, 4-core CPU, 8GB RAM). All numbers are reproducible with `heavendb benchmark 100000` — which runs 100,000 lookups at each working-set size. **Your numbers will differ based on hardware.**
 
 > ⚠️ **Measurement note:** These numbers are measured at the **hash map layer** (`hashmap_get()` directly). SQL `SELECT` adds parsing, planning, and projection overhead — expect significantly lower throughput through the SQL layer.
 >
@@ -292,10 +291,7 @@ Performance drops **~128x** as the working set grows from 100 keys to 1M keys. T
 │   │       B-Tree Indexes  (O(log n) ranges)          │      │
 │   └──────────────────────────────────────────────────┘      │
 │   ┌──────────────────────────────────────────────────┐      │
-│   │       Append-Only Storage  (.hdb files)          │      │
-│   └──────────────────────────────────────────────────┘      │
-│   ┌──────────────────────────────────────────────────┐      │
-│   │       Atomic Saves  (temp file + rename)         │      │
+│   │  Append-Only Storage  (.hdb, atomic temp+rename) │      │
 │   └──────────────────────────────────────────────────┘      │
 │   ┌──────────────────────────────────────────────────┐      │
 │   │       Group Commit Buffer  (batched writes)      │      │
@@ -350,7 +346,7 @@ heavendb shell             # Interactive shell
 heavendb serve             # TCP + HTTP server (dashboard at :8080)
 heavendb run script.sql    # Execute SQL script
 heavendb run test3.sql     # 282-command integration test
-heavendb benchmark 100000  # Benchmark at multiple working-set sizes
+heavendb benchmark 100000  # Runs 100,000 lookups at each of 100/1k/10k/100k/1M working-set sizes
 ```
 
 ### First-Run Setup
@@ -382,6 +378,21 @@ set HEAVENDB_INITIAL_PASSWORD=MyPassword123
 heavendb shell
 ```
 
+**Backup file lifecycle:**
+- On first run, the password is also written to `%USERPROFILE%\.heavendb_initial_password` (or `$HOME/.heavendb_initial_password` on Unix).
+- The file is created with default OS permissions — **not** the strictest available. This is a known limitation on Windows; a future version will use ACL APIs.
+- **HeavenDB does not delete this file automatically.** You should delete it manually after your first login:
+
+```bash
+# Windows
+del "%USERPROFILE%\.heavendb_initial_password"
+
+# Linux/macOS
+rm ~/.heavendb_initial_password
+```
+
+- If you skip the first-run setup entirely by setting `HEAVENDB_INITIAL_PASSWORD`, the backup file still contains that value. Delete it after first login.
+
 ### Crash Recovery
 
 If the process is killed mid-transaction, HeavenDB recovers cleanly on next start:
@@ -401,6 +412,8 @@ Uncommitted changes are rolled back. Committed data survives. Atomic saves preve
 ### Creating Tables
 
 ```sql
+DROP TABLE IF EXISTS users;   -- safe on first run
+
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     name TEXT NOT NULL,
@@ -518,7 +531,9 @@ DROP TABLE IF EXISTS users;
 > 3. Result table
 > 4. `(N rows)` or `(nil)` terminator
 >
-> Read until you see the terminator line. These examples are minimal — add reconnection, timeouts, and proper framing for production.
+> Read until you see the terminator line. **For robustness, match the full terminator pattern (a line that starts with `(` and ends with `rows)` or is exactly `(nil)`), not just the substring `rows)`.**
+>
+> These examples are minimal — add reconnection, timeouts, and proper framing for production.
 
 ### Python
 
@@ -605,9 +620,9 @@ Script complete!
 ========================================
 ```
 
-### Crash Recovery Test
+### Crash Recovery Tests
 
-Kill the process mid-transaction and restart — the database recovers cleanly:
+**Test 1: Uncommitted transaction killed mid-flight**
 
 ```bash
 heavendb shell
@@ -617,6 +632,7 @@ INSERT INTO users VALUES (NULL, 'TempUser')
 ```
 
 Restart and check:
+
 ```bash
 heavendb shell
 # Output: WAL Recovery: Found interrupted transaction (1 inserts) — DISCARDED
@@ -624,9 +640,36 @@ SELECT * FROM users
 # TempUser is NOT present — transaction was discarded
 ```
 
+**Test 2: Committed transaction killed after COMMIT**
+
+```bash
+heavendb shell
+BEGIN
+INSERT INTO users VALUES (NULL, 'CommittedUser')
+COMMIT
+# Press Ctrl+C — process killed AFTER commit
+```
+
+Restart and check:
+
+```bash
+heavendb shell
+SELECT * FROM users
+# CommittedUser IS present — durability comes from the atomic .hdb save on COMMIT
+```
+
+This is the case that matters most: **once COMMIT returns, the data survives any subsequent crash.**
+
 ### CI / CD
 
-> 🚧 **Not yet implemented.** GitHub Actions CI is on the roadmap.
+Every push and pull request to `main` triggers GitHub Actions:
+
+- Compiles HeavenDB with GCC on Windows
+- Runs all 11 unit tests
+- Runs the 282-command integration test
+- Fails the build if any error is detected
+
+[View CI runs →](https://github.com/Aditya-cyber-hind/HeavenDB/actions)
 
 ---
 
@@ -640,7 +683,7 @@ HeavenDB/
 │   ├── hashmap.c/h         # Hash map implementation
 │   ├── btree.c/h           # B-Tree implementation
 │   ├── buffer.c/h          # Group commit buffer
-│   ├── wal.c/h             # Write-Ahead Log + crash recovery
+│   ├── wal.c/h             # Write-Ahead Log + undo-only crash recovery
 │   ├── table.c/h           # Table structure & constraints
 │   ├── sql.c/h             # SQL parser & executor
 │   ├── auth.c/h            # PBKDF2 authentication
@@ -658,6 +701,10 @@ HeavenDB/
 │
 ├── tests/
 │   └── test_hashmap.c      # 11 unit tests for the hash map
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml          # GitHub Actions CI
 │
 ├── test3.sql               # 282-command integration test
 ├── README.md
@@ -678,7 +725,7 @@ HeavenDB/
 - [x] SQL parser & tokenizer
 - [x] B-Tree indexes with proper rebalancing
 - [x] Persistent storage with **atomic saves** (temp file + rename)
-- [x] **WAL real-time writes + crash recovery**
+- [x] **WAL real-time writes + undo-only crash recovery** (rolls back uncommitted transactions; committed data comes from atomic `.hdb` save)
 - [x] In-session transactions with SAVEPOINT
 - [x] TCP + HTTP servers with web dashboard
 - [x] **PBKDF2-HMAC-SHA256** password hashing
@@ -699,13 +746,13 @@ HeavenDB/
 - [x] **Unit tests for hashmap.c** (11 passing)
 - [x] **Honest multi-scale benchmark** (100 to 1M keys)
 - [x] **Clean integration test run** (282 commands, 0 errors)
+- [x] **GitHub Actions CI** (compile + unit tests + integration test on every push)
 
 </details>
 
 <details>
 <summary><b>🚧 In Progress (next up)</b></summary>
 
-- [ ] **GitHub Actions CI**
 - [ ] Unit tests for btree.c, wal.c, buffer.c
 - [ ] POSIX socket port (Linux/macOS networking)
 - [ ] Multi-process MVCC concurrency
@@ -732,7 +779,7 @@ HeavenDB/
 
 ## 🧑‍💻 Author
 
-**Aditya** — 13-year-old systems programmer from India.
+**Aditya** — systems programmer from India. Built HeavenDB at 13.
 
 [![GitHub](https://img.shields.io/badge/GitHub-Aditya--cyber--hind-181717?style=for-the-badge&logo=github)](https://github.com/Aditya-cyber-hind)
 
