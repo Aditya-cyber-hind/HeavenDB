@@ -14,7 +14,7 @@
 [![Tests](https://img.shields.io/badge/272%20commands-passing-22c55e?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 [![Security](https://img.shields.io/badge/PBKDF2-100k%20iterations-ef4444?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 
-[**Features**](#-features) · [**Architecture**](#-architecture) · [**Build**](#-building) · [**SQL Reference**](#-sql-reference) · [**Roadmap**](#-roadmap)
+[**Features**](#-features) · [**Architecture**](#-architecture) · [**Build**](#-building) · [**Limitations**](#️-known-limitations) · [**SQL Reference**](#-sql-reference) · [**Roadmap**](#-roadmap)
 
 </div>
 
@@ -162,18 +162,75 @@ DAY(date)
 
 ---
 
+## ⚠️ Known Limitations
+
+HeavenDB is an **educational project**, not a production database. Here's what it can't do:
+
+### 🔒 Concurrency
+- **Writers serialize.** A global write lock means **only one writer can execute at a time.** Concurrent `INSERT`/`UPDATE`/`DELETE` operations will block. There is no MVCC (Multi-Version Concurrency Control).
+- **No transaction isolation levels.** Nested transactions are not supported beyond `SAVEPOINT`.
+- **Reads can be stale.** A reader thread can see partial state during a concurrent write.
+
+### 📊 Performance Reality
+- The **"10M ops/sec"** figure is measured on a **1,000-key working set** — small enough to fit entirely in **L1 CPU cache**. Real workloads with millions of keys will be **orders of magnitude slower**.
+- **SQL queries do linear scans** unless they use an indexed `INTEGER` column.
+- **`GROUP BY`, `ORDER BY`, and `JOIN` are O(n²)** naive algorithms. Fine for thousands of rows; not for millions.
+- **The database file is rewritten on every write** via `sql_save()`. Real databases use incremental WAL replay.
+
+### 🌳 Indexing
+- B-Tree indexes support **only `INTEGER` columns**.
+- `TEXT`, `UUID`, `DATE`, `TIMESTAMP`, `JSON`, and `BOOLEAN` columns do full table scans.
+
+### ⛓️ FK CASCADE
+- `ON DELETE CASCADE` **rewrites the entire database file** on each cascade delete — O(n) cost per cascade.
+- Only `INTEGER` foreign keys are supported.
+- No `ON UPDATE CASCADE`.
+
+### 🧪 Testing & CI
+- Only **one integration test** file (`test3.sql`, 272 commands).
+- **No unit tests** for `hashmap.c`, `btree.c`, `wal.c`, or `buffer.c`.
+- **No GitHub Actions CI** running on every commit.
+- **No fuzz testing** on the SQL parser.
+
+### 🌍 Portability
+- The networking layer uses **Winsock** (Windows-only). Linux/macOS require a POSIX port (on the roadmap).
+- Compile flags (`-lws2_32`, backslash paths) are Windows-specific.
+
+### 🔐 Security Caveats
+- Passwords use **PBKDF2-HMAC-SHA256** — this part is solid.
+- **No timing-attack protection** on password comparison.
+- **No SQL injection protection** — the parser is homegrown.
+- **No TLS/SSL** on the network layer. Traffic is plaintext.
+- The default `admin` user password is documented below. **Change it immediately.**
+
+### 🚫 Not Supported
+- Window functions (`ROW_NUMBER`, `RANK`)
+- Triggers
+- Stored procedures
+- Full-text search
+- User-defined functions
+- Subqueries in `FROM` clauses
+- `RIGHT JOIN` / `FULL JOIN` with complex conditions
+- Recursive CTEs
+- Streaming results
+
+---
+
 ## 📊 Performance
 
 **Honest benchmarks** on a standard development laptop (Windows, 4-core CPU, 8GB RAM):
 
-| Operation | Throughput | Methodology |
-|-----------|:----------:|-------------|
-| In-memory GET | **~10,000,000 ops/sec** | 1,000 keys, single-threaded, `benchmark 100000` |
-| Disk SET (Group Commit) | **~7,800 ops/sec** | 100 writes per flush, `benchmark 100000` |
-| PBKDF2 password hash | **~50 hashes/sec** | Intentional — 100k SHA-256 iterations |
-| SQL SELECT | **Instant** | On tables with < 1,000 rows |
+| Operation | Throughput | What It Actually Measures |
+|-----------|:----------:|---------------------------|
+| In-memory GET (1k keys) | ~10,000,000 ops/sec | **L1 cache throughput** — not realistic for large datasets |
+| In-memory GET (1M keys) | *(not yet benchmarked)* | Would be significantly slower — depends on cache misses |
+| Disk SET (Group Commit) | ~7,800 ops/sec | Batched writes, 100 per flush |
+| PBKDF2 password hash | ~50 hashes/sec | Intentional — 100k SHA-256 iterations |
+| SQL SELECT | Linear scan | ~1M rows/sec on integer comparisons |
 
-> ⚠️ These are **local machine numbers** on development hardware. They are not indicative of production throughput. Run `heavendb benchmark 100000` on your own machine to verify.
+> ⚠️ **These numbers reflect local hardware under ideal conditions.** They are **not** indicative of production throughput. Real performance depends on working set size, disk speed, and concurrency.
+>
+> Run `heavendb benchmark 100000` on your own machine to verify. **Do not cite these numbers in production planning.**
 
 ---
 
@@ -211,7 +268,7 @@ DAY(date)
 │   │       Write-Ahead Log  (ACID transactions)       │      │
 │   └──────────────────────────────────────────────────┘      │
 │   ┌──────────────────────────────────────────────────┐      │
-│   │       Global Write Lock  (single-process safe)   │      │
+│   │       Global Write Lock  (writers serialize)     │      │
 │   └──────────────────────────────────────────────────┘      │
 │                                                             │
 │   ┌───────────┐  ┌─────────────┐  ┌──────────────┐         │
@@ -363,13 +420,17 @@ COMMIT;
 ### Security
 
 ```sql
-CREATE USER admin WITH PASSWORD 'admin123';
-LOGIN admin WITH PASSWORD 'admin123';
-CHANGE PASSWORD 'NewSecure123';
-GRANT  SELECT ON users TO admin;
-REVOKE DELETE ON users FROM admin;
+-- Default admin password: Admin1234 (CHANGE THIS IMMEDIATELY AFTER FIRST LOGIN)
+LOGIN admin WITH PASSWORD 'Admin1234';
+CHANGE PASSWORD 'YourNewSecure456';
+
+CREATE USER alice WITH PASSWORD 'AlicePass789';
+GRANT  SELECT ON users TO alice;
+REVOKE DELETE ON users FROM alice;
 LOGOUT;
 ```
+
+> ⚠️ **The default password `Admin1234` is publicly known.** Change it in your first session. HeavenDB enforces min 8 chars, uppercase, lowercase, digit for any new password.
 
 ### Administration
 
@@ -418,15 +479,17 @@ telnet localhost 6379
 
 ---
 
-## 🧪 Test Suite
+## 🧪 Testing
 
-HeavenDB ships with a **272-command stress test** covering every feature:
+### Integration Test
+
+HeavenDB ships with **one integration test** covering 272 SQL commands across 9 tables:
 
 ```bash
 heavendb run test3.sql
 ```
 
-**Result:**
+Result:
 
 ```
 ========================================
@@ -435,6 +498,14 @@ Script complete!
   Errors: 10  (all expected DROP TABLE on first run)
 ========================================
 ```
+
+### Unit Tests
+
+> 🚧 **Not yet implemented.** Unit tests for `hashmap.c`, `btree.c`, `wal.c`, and `buffer.c` are on the roadmap.
+
+### CI / CD
+
+> 🚧 **Not yet implemented.** GitHub Actions CI is on the roadmap.
 
 ---
 
@@ -464,7 +535,7 @@ HeavenDB/
 │   ├── style.css           # Dashboard styles
 │   └── app.js              # Dashboard logic
 │
-├── test3.sql               # 272-command stress test
+├── test3.sql               # 272-command integration test
 ├── README.md
 └── Makefile
 ```
@@ -503,18 +574,22 @@ HeavenDB/
 <details>
 <summary><b>🚧 In Progress</b></summary>
 
+- [ ] Unit tests for hashmap, btree, wal, buffer
+- [ ] GitHub Actions CI
+- [ ] POSIX socket port (Linux/macOS networking)
+- [ ] Multi-process MVCC concurrency
 - [ ] Window functions (`ROW_NUMBER`, `RANK`)
 - [ ] Triggers
 - [ ] Stored procedures
-- [ ] Full-text search
-- [ ] POSIX socket port (Linux/macOS networking)
-- [ ] Multi-process MVCC concurrency
 
 </details>
 
 <details>
 <summary><b>🔮 Planned</b></summary>
 
+- [ ] Full-text search
+- [ ] B-Tree support for TEXT / UUID / DATE columns
+- [ ] Incremental FK CASCADE (no full-file rewrite)
 - [ ] Query optimizer
 - [ ] Cost-based planner
 - [ ] Real replication
