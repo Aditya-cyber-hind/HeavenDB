@@ -5321,6 +5321,160 @@ static int handle_rollback_to(TokenList *tokens) {
     printf("OK. Rolled back to savepoint '%s'\n", savepoint_name);
     return 0;
 }
+
+static int handle_json_function(TokenList *tokens) {
+    if (tokens->count < 5) return -1;
+    
+    char func_name[32];
+    strcpy(func_name, tokens->tokens[1]);
+    to_upper(func_name);
+    
+    char *paren = strchr(func_name, '(');
+    if (paren) *paren = '\0';
+    
+    int from_idx = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "FROM") == 0) {
+            from_idx = i;
+            break;
+        }
+    }
+    
+    if (from_idx == -1) return -1;
+    
+    char table_name[MAX_TABLE_NAME];
+    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    int arg_start = -1;
+    for (int i = 1; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "(") == 0) {
+            arg_start = i + 1;
+            break;
+        }
+    }
+    
+    if (arg_start == -1 || arg_start + 2 >= tokens->count) {
+        printf("ERROR: Invalid JSON function syntax\n");
+        return -1;
+    }
+    
+    char col_name[64];
+    char json_key[128];
+    char json_value[256] = "";
+    
+    strcpy(col_name, tokens->tokens[arg_start]);
+    strcpy(json_key, tokens->tokens[arg_start + 2]);
+    
+    if (strcmp(func_name, "JSON_SET") == 0) {
+        if (arg_start + 4 >= tokens->count) {
+            printf("ERROR: json_set requires 3 arguments\n");
+            return -1;
+        }
+        strcpy(json_value, tokens->tokens[arg_start + 4]);
+    }
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return -1;
+    }
+    
+    printf("result\n");
+    printf("------\n");
+    
+    int match_count = 0;
+    
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        
+        if (table->columns[col_idx].type != TYPE_JSON &&
+            table->columns[col_idx].type != TYPE_TEXT) continue;
+        
+        char *json_str = (char*)row[col_idx];
+        
+        // Simple JSON parsing: find "key":"value"
+        char search_pattern[256];
+        snprintf(search_pattern, sizeof(search_pattern), "\"%s\":", json_key);
+        
+        char *pos = strstr(json_str, search_pattern);
+        
+        if (!pos) {
+            printf("(null)\n");
+            match_count++;
+            continue;
+        }
+        
+        pos += strlen(search_pattern);
+        
+        if (strcmp(func_name, "JSON_EXTRACT") == 0) {
+            // Extract value
+            char result[256] = "";
+            int k = 0;
+            
+            if (*pos == '"') {
+                pos++;
+                while (*pos && *pos != '"' && k < 255) {
+                    result[k++] = *pos++;
+                }
+            } else {
+                while (*pos && *pos != ',' && *pos != '}' && k < 255) {
+                    result[k++] = *pos++;
+                }
+            }
+            result[k] = '\0';
+            
+            printf("%-15s\n", result);
+        }
+        else if (strcmp(func_name, "JSON_SET") == 0) {
+            // Build new JSON with updated value
+            char new_json[1024] = "";
+            int before_len = pos - json_str;
+            strncat(new_json, json_str, before_len);
+            
+            // Add new value (quoted if not numeric)
+            int is_numeric = 1;
+            for (int i = 0; json_value[i]; i++) {
+                if (!isdigit((unsigned char)json_value[i]) && json_value[i] != '.' && json_value[i] != '-') {
+                    is_numeric = 0;
+                    break;
+                }
+            }
+            
+            if (is_numeric) {
+                strcat(new_json, json_value);
+            } else {
+                strcat(new_json, "\"");
+                strcat(new_json, json_value);
+                strcat(new_json, "\"");
+            }
+            
+            // Skip old value
+            if (*pos == '"') {
+                pos++;
+                while (*pos && *pos != '"') pos++;
+                if (*pos == '"') pos++;
+            } else {
+                while (*pos && *pos != ',' && *pos != '}') pos++;
+            }
+            
+            strcat(new_json, pos);
+            
+            printf("%-15s\n", new_json);
+        }
+        
+        match_count++;
+    }
+    
+    printf("(%d rows)\n", match_count);
+    return 0;
+}
+
 int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
@@ -5344,6 +5498,10 @@ int sql_execute(const char *sql) {
         
         char *paren = strchr(first_word, '(');
         if (paren) *paren = '\0';
+        if (strcmp(first_word, "JSON_EXTRACT") == 0 ||
+            strcmp(first_word, "JSON_SET") == 0) {
+            return handle_json_function(&list);
+        }
         
         if (strcmp(first_word, "UPPER") == 0 ||
             strcmp(first_word, "LOWER") == 0 ||
