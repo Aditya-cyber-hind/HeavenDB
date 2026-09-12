@@ -3,12 +3,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <windows.h>
+
+static CRITICAL_SECTION db_lock;
+static int db_lock_initialized = 0;
+
+static void db_lock_init(void) {
+    if (!db_lock_initialized) {
+        InitializeCriticalSection(&db_lock);
+        db_lock_initialized = 1;
+    }
+}
 
 #define OP_SET 1
 #define OP_DELETE 2
-#define BUFFER_SIZE 100 // Flush after 100 pending writes
+#define BUFFER_SIZE 100
 
 Database *db_open(const char *filename) {
+    db_lock_init();
+    
     Database *db = (Database*)malloc(sizeof(Database));
     if (!db) return NULL;
     
@@ -36,7 +49,6 @@ Database *db_open(const char *filename) {
     
     db->is_dirty = 0;
     
-    // Ensure file exists
     FILE *fp = fopen(filename, "ab+");
     if (!fp) {
         buffer_destroy(db->write_buffer);
@@ -47,7 +59,6 @@ Database *db_open(const char *filename) {
     }
     fclose(fp);
     
-    // Load existing data
     if (db_load(db) != 0) {
         db_close(db);
         return NULL;
@@ -59,8 +70,9 @@ Database *db_open(const char *filename) {
 void db_close(Database *db) {
     if (!db) return;
     
-    // Flush any remaining writes
+    EnterCriticalSection(&db_lock);
     buffer_flush(db->write_buffer, db->filename);
+    LeaveCriticalSection(&db_lock);
     
     if (db->filename) free(db->filename);
     if (db->memory) hashmap_destroy(db->memory);
@@ -69,20 +81,33 @@ void db_close(Database *db) {
 }
 
 int db_set(Database *db, const char *key, const char *value, size_t value_len) {
-    if (!db || !key || !value) return -1;
+    db_lock_init();
+    EnterCriticalSection(&db_lock);
     
-    // Update memory immediately (fast path)
-    if (hashmap_set(db->memory, key, value, value_len) != 0) return -1;
+    if (!db || !key || !value) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
     
-    // Buffer the disk write
-    if (buffer_add(db->write_buffer, OP_SET, key, value, value_len) != 0) return -1;
+    if (hashmap_set(db->memory, key, value, value_len) != 0) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
     
-    // Auto-flush when buffer is full
+    if (buffer_add(db->write_buffer, OP_SET, key, value, value_len) != 0) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
+    
     if (db->write_buffer->count >= db->write_buffer->max_entries) {
-        if (buffer_flush(db->write_buffer, db->filename) != 0) return -1;
+        if (buffer_flush(db->write_buffer, db->filename) != 0) {
+            LeaveCriticalSection(&db_lock);
+            return -1;
+        }
     }
     
     db->is_dirty = 1;
+    LeaveCriticalSection(&db_lock);
     return 0;
 }
 
@@ -92,20 +117,38 @@ char *db_get(Database *db, const char *key, size_t *value_len) {
 }
 
 int db_delete(Database *db, const char *key) {
-    if (!db || !key) return -1;
+    db_lock_init();
+    EnterCriticalSection(&db_lock);
     
-    if (!hashmap_get(db->memory, key, NULL)) return -1;
+    if (!db || !key) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
     
-    if (hashmap_delete(db->memory, key) != 0) return -1;
+    if (!hashmap_get(db->memory, key, NULL)) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
     
-    // Buffer the tombstone write
-    if (buffer_add(db->write_buffer, OP_DELETE, key, "", 0) != 0) return -1;
+    if (hashmap_delete(db->memory, key) != 0) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
+    
+    if (buffer_add(db->write_buffer, OP_DELETE, key, "", 0) != 0) {
+        LeaveCriticalSection(&db_lock);
+        return -1;
+    }
     
     if (db->write_buffer->count >= db->write_buffer->max_entries) {
-        if (buffer_flush(db->write_buffer, db->filename) != 0) return -1;
+        if (buffer_flush(db->write_buffer, db->filename) != 0) {
+            LeaveCriticalSection(&db_lock);
+            return -1;
+        }
     }
     
     db->is_dirty = 1;
+    LeaveCriticalSection(&db_lock);
     return 0;
 }
 
@@ -162,7 +205,13 @@ int db_load(Database *db) {
 
 int db_flush(Database *db) {
     if (!db) return -1;
-    return buffer_flush(db->write_buffer, db->filename);
+    
+    db_lock_init();
+    EnterCriticalSection(&db_lock);
+    int result = buffer_flush(db->write_buffer, db->filename);
+    LeaveCriticalSection(&db_lock);
+    
+    return result;
 }
 
 size_t db_size(const Database *db) {

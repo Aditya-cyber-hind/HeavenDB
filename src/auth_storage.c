@@ -19,17 +19,13 @@ int auth_save(AuthSystem *auth) {
     for (int i = 0; i < auth->user_count; i++) {
         User *user = &auth->users[i];
         
-        // Write username
         uint32_t name_len = (uint32_t)strlen(user->username);
         fwrite(&name_len, sizeof(uint32_t), 1, fp);
         fwrite(user->username, sizeof(char), name_len, fp);
         
-        // Write password hash
-        uint32_t hash_len = (uint32_t)strlen(user->password_hash);
-        fwrite(&hash_len, sizeof(uint32_t), 1, fp);
-        fwrite(user->password_hash, sizeof(char), hash_len, fp);
+        fwrite(user->salt, sizeof(uint8_t), SALT_SIZE, fp);
+        fwrite(user->password_hash, sizeof(uint8_t), HASH_SIZE, fp);
         
-        // Write flags
         fwrite(&user->is_active, sizeof(int), 1, fp);
         fwrite(&user->failed_attempts, sizeof(int), 1, fp);
         fwrite(&user->is_locked, sizeof(int), 1, fp);
@@ -44,7 +40,7 @@ int auth_load(AuthSystem *auth) {
     if (!auth) return -1;
     
     FILE *fp = fopen(AUTH_FILE, "rb");
-    if (!fp) return 0; // No file yet
+    if (!fp) return 0;
     
     uint32_t magic;
     if (fread(&magic, sizeof(uint32_t), 1, fp) != 1) {
@@ -68,19 +64,15 @@ int auth_load(AuthSystem *auth) {
     for (uint32_t i = 0; i < count && i < MAX_USERS; i++) {
         User *user = &auth->users[i];
         
-        // Read username
         uint32_t name_len;
         if (fread(&name_len, sizeof(uint32_t), 1, fp) != 1) break;
+        if (name_len >= MAX_USERNAME) break;
         if (fread(user->username, sizeof(char), name_len, fp) != name_len) break;
         user->username[name_len] = '\0';
         
-        // Read password hash
-        uint32_t hash_len;
-        if (fread(&hash_len, sizeof(uint32_t), 1, fp) != 1) break;
-        if (fread(user->password_hash, sizeof(char), hash_len, fp) != hash_len) break;
-        user->password_hash[hash_len] = '\0';
+        if (fread(user->salt, sizeof(uint8_t), SALT_SIZE, fp) != SALT_SIZE) break;
+        if (fread(user->password_hash, sizeof(uint8_t), HASH_SIZE, fp) != HASH_SIZE) break;
         
-        // Read flags
         fread(&user->is_active, sizeof(int), 1, fp);
         fread(&user->failed_attempts, sizeof(int), 1, fp);
         fread(&user->is_locked, sizeof(int), 1, fp);
