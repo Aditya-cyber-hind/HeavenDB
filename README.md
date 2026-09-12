@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/HeavenDB-v6.0-0ea5e9?style=for-the-badge&labelColor=1e293b" alt="HeavenDB v6.0" />
+<img src="https://img.shields.io/badge/HeavenDB-v0.1.0--preview-0ea5e9?style=for-the-badge&labelColor=1e293b" alt="HeavenDB v0.1.0 Preview" />
 
 # 🗄️ HeavenDB
 
@@ -46,10 +46,12 @@ It is an **educational project** designed to demonstrate how real databases work
 | **DDL** | `CREATE`, `DROP`, `ALTER TABLE` |
 | **Views** | `CREATE VIEW`, `DROP VIEW` |
 | **Indexes** | `CREATE INDEX` |
-| **Joins** | `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` |
+| **Joins** | `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` * |
 | **Subqueries** | `EXISTS`, `NOT EXISTS`, `ANY`, `ALL`, `SOME` |
 | **Set ops** | `UNION`, `UNION ALL` |
 | **CTEs** | `WITH ... AS (...)` |
+
+> \* Simple equality joins only. See [Known Limitations](#-joins).
 
 </td>
 <td width="50%" valign="top">
@@ -147,9 +149,9 @@ DAY(date)
 
 - 🚀 **In-memory hash map** — O(1) key-value lookups
 - 🌳 **B-Tree indexes** — O(log n) range queries on `INTEGER` columns
-- 📝 **Write-Ahead Log** — Full ACID transaction support
+- 📝 **Write-Ahead Log** — in-session transaction rollback
 - 📦 **Group Commit buffer** — batched disk writes
-- 🗄️ **Append-only `.hdb` format** — crash-safe persistence
+- 🗄️ **Append-only `.hdb` format** — persisted state
 - 🔒 **Global write lock** — single-process safety
 - ⛓️ **FK CASCADE** — `ON DELETE CASCADE` referential integrity
 
@@ -177,14 +179,29 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 - **`GROUP BY`, `ORDER BY`, and `JOIN` are O(n²)** naive algorithms. Fine for thousands of rows; not for millions.
 - **The database file is rewritten on every write** via `sql_save()`. Real databases use incremental WAL replay.
 
+### 📝 Write-Ahead Log (WAL)
+- The WAL is written during transactions but **not replayed on startup**. Actual state comes from the main `.hdb` file.
+- **If the process crashes mid-transaction, uncommitted changes are lost.**
+- The WAL is currently used **only for in-session rollback** — not for durable crash recovery.
+- Real crash recovery (WAL replay on boot) is on the roadmap.
+
 ### 🌳 Indexing
 - B-Tree indexes support **only `INTEGER` columns**.
 - `TEXT`, `UUID`, `DATE`, `TIMESTAMP`, `JSON`, and `BOOLEAN` columns do full table scans.
+
+### 🔗 Joins
+- `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` joins work with **simple `ON table1.col = table2.col` equality conditions only.**
+- **Not supported:** Multi-column `ON` conditions, non-equality operators (`>`, `<`), joins on `TEXT` / `UUID` / `DATE` columns.
 
 ### ⛓️ FK CASCADE
 - `ON DELETE CASCADE` **rewrites the entire database file** on each cascade delete — O(n) cost per cascade.
 - Only `INTEGER` foreign keys are supported.
 - No `ON UPDATE CASCADE`.
+
+### 📡 Replication
+- "Replication" in HeavenDB means **manual file copy**. The `REPLICATE TO` and `SYNC` commands are **stubs** that return success but do not actually sync data.
+- **No streaming replication. No master-slave. No conflict resolution.**
+- Real replication is on the roadmap.
 
 ### 🧪 Testing & CI
 - Only **one integration test** file (`test3.sql`, 272 commands).
@@ -201,7 +218,7 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 - **No timing-attack protection** on password comparison.
 - **No SQL injection protection** — the parser is homegrown.
 - **No TLS/SSL** on the network layer. Traffic is plaintext.
-- The default `admin` user password is documented below. **Change it immediately.**
+- On first run, an `admin` account is created with the password `Admin1234`. **This is a bootstrap credential only — change it in your first session.**
 
 ### 🚫 Not Supported
 - Window functions (`ROW_NUMBER`, `RANK`)
@@ -210,7 +227,6 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 - Full-text search
 - User-defined functions
 - Subqueries in `FROM` clauses
-- `RIGHT JOIN` / `FULL JOIN` with complex conditions
 - Recursive CTEs
 - Streaming results
 
@@ -265,7 +281,7 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 │   │       Group Commit Buffer  (batched writes)      │      │
 │   └──────────────────────────────────────────────────┘      │
 │   ┌──────────────────────────────────────────────────┐      │
-│   │       Write-Ahead Log  (ACID transactions)       │      │
+│   │       Write-Ahead Log  (in-session only)         │      │
 │   └──────────────────────────────────────────────────┘      │
 │   ┌──────────────────────────────────────────────────┐      │
 │   │       Global Write Lock  (writers serialize)     │      │
@@ -273,7 +289,7 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 │                                                             │
 │   ┌───────────┐  ┌─────────────┐  ┌──────────────┐         │
 │   │ PBKDF2    │  │ Permissions │  │ Replication  │         │
-│   │  Auth     │  │  GRANT/REV  │  │  (basic)     │         │
+│   │  Auth     │  │  GRANT/REV  │  │  (stubbed)   │         │
 │   └───────────┘  └─────────────┘  └──────────────┘         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -420,7 +436,8 @@ COMMIT;
 ### Security
 
 ```sql
--- Default admin password: Admin1234 (CHANGE THIS IMMEDIATELY AFTER FIRST LOGIN)
+-- On first run, HeavenDB bootstraps an 'admin' user with password 'Admin1234'.
+-- This is a bootstrap credential ONLY. Change it in your first session.
 LOGIN admin WITH PASSWORD 'Admin1234';
 CHANGE PASSWORD 'YourNewSecure456';
 
@@ -430,7 +447,7 @@ REVOKE DELETE ON users FROM alice;
 LOGOUT;
 ```
 
-> ⚠️ **The default password `Admin1234` is publicly known.** Change it in your first session. HeavenDB enforces min 8 chars, uppercase, lowercase, digit for any new password.
+> ⚠️ **The default password `Admin1234` is publicly documented.** Change it immediately. HeavenDB enforces min 8 chars, uppercase, lowercase, digit for any new password.
 
 ### Administration
 
@@ -525,7 +542,7 @@ HeavenDB/
 │   ├── auth.c/h            # PBKDF2 authentication
 │   ├── auth_storage.c/h    # Persistent user storage
 │   ├── permissions.c/h     # GRANT / REVOKE system
-│   ├── replication.c/h     # Replication
+│   ├── replication.c/h     # Replication (stubbed)
 │   ├── tcp_server.c/h      # TCP server
 │   ├── http_server.c/h     # HTTP server
 │   └── websocket.c/h       # WebSocket support
@@ -552,13 +569,13 @@ HeavenDB/
 - [x] SQL parser & tokenizer
 - [x] B-Tree indexes with proper rebalancing
 - [x] Persistent storage
-- [x] ACID transactions with WAL
+- [x] In-session transactions with WAL
 - [x] TCP + HTTP servers with web dashboard
 - [x] **PBKDF2-HMAC-SHA256** password hashing
 - [x] **Global write lock** for single-process safety
 - [x] User authentication with account lockout
 - [x] `GRANT` / `REVOKE` permissions
-- [x] All `JOIN` types
+- [x] All `JOIN` types (simple equality)
 - [x] Views
 - [x] Aggregates, `GROUP BY`, `HAVING`
 - [x] Subqueries, `EXISTS`, `ANY` / `ALL`
@@ -574,6 +591,8 @@ HeavenDB/
 <details>
 <summary><b>🚧 In Progress</b></summary>
 
+- [ ] **WAL replay on startup** (real crash recovery)
+- [ ] **Random password on first run** (no default credentials)
 - [ ] Unit tests for hashmap, btree, wal, buffer
 - [ ] GitHub Actions CI
 - [ ] POSIX socket port (Linux/macOS networking)
@@ -590,9 +609,9 @@ HeavenDB/
 - [ ] Full-text search
 - [ ] B-Tree support for TEXT / UUID / DATE columns
 - [ ] Incremental FK CASCADE (no full-file rewrite)
+- [ ] Real replication (streaming master-slave)
 - [ ] Query optimizer
 - [ ] Cost-based planner
-- [ ] Real replication
 - [ ] Columnar storage engine
 
 </details>
