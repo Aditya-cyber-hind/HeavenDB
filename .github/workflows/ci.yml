@@ -1,0 +1,51 @@
+name: HeavenDB CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build and Test (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Build HeavenDB
+        shell: msys2 {0}
+        run: |
+          gcc -Wall -Wextra -Wno-switch -O2 -std=c99 -o heavendb.exe \
+            src/main.c src/database.c src/hashmap.c src/buffer.c \
+            src/table.c src/sql.c src/btree.c src/wal.c \
+            src/tcp_server.c src/auth.c src/auth_storage.c \
+            src/permissions.c src/replication.c src/websocket.c \
+            src/http_server.c -lws2_32
+
+      - name: Build and run unit tests
+        shell: msys2 {0}
+        run: |
+          gcc -Wall -Wextra -O2 -std=c99 -o test_hashmap.exe tests/test_hashmap.c src/hashmap.c
+          ./test_hashmap.exe
+
+      - name: Run integration test
+        shell: msys2 {0}
+        run: |
+          rm -f heaven_users.hdb heaven_sql.hdb heaven.wal
+          ./heavendb.exe run test3.sql > stress.log 2>&1
+          if grep -q "ERROR" stress.log; then
+            echo "Integration test produced errors:"
+            grep "ERROR" stress.log
+            exit 1
+          fi
+          echo "Integration test passed with 0 errors"
