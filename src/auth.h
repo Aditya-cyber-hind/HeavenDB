@@ -29,6 +29,7 @@ typedef struct {
 } AuthSystem;
 
 AuthSystem *auth_create(void);
+AuthSystem *auth_create_silent(void);
 int auth_create_user(AuthSystem *auth, const char *username, const char *password);
 int auth_login(AuthSystem *auth, const char *username, const char *password);
 int auth_change_password(AuthSystem *auth, const char *new_password);

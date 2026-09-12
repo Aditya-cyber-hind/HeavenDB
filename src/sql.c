@@ -66,9 +66,13 @@ static int foreign_key_count = 0;
 static Table *find_table(const char *name);
 
 // ==================== PERSISTENCE ====================
-
 int sql_save(void) {
-    FILE *fp = fopen(SQL_FILE, "wb");
+    // Write to a temp file first, then rename.
+    // If the process dies mid-write, the old file stays intact.
+    char temp_file[256];
+    snprintf(temp_file, sizeof(temp_file), "%s.tmp", SQL_FILE);
+    
+    FILE *fp = fopen(temp_file, "wb");
     if (!fp) return -1;
     
     uint32_t magic = SQL_MAGIC;
@@ -140,6 +144,13 @@ int sql_save(void) {
     }
     
     fclose(fp);
+    
+    // Atomic rename: delete old, rename temp
+    remove(SQL_FILE);
+    if (rename(temp_file, SQL_FILE) != 0) {
+        return -1;
+    }
+    
     return 0;
 }
 
@@ -2836,12 +2847,24 @@ void sql_init(void) {
     table_count = 0;
     view_count = 0;
     foreign_key_count = 0;
+    
     sql_load();
+    
     if (!auth_system) {
-        auth_system = auth_create();
-        auth_load(auth_system);
+        FILE *check = fopen(AUTH_FILE, "rb");
+        int is_first_run = (check == NULL);
+        if (check) fclose(check);
+        
+        if (is_first_run) {
+            auth_system = auth_create();
+        } else {
+            auth_system = auth_create_silent();
+            auth_load(auth_system);
+        }
+        
         printf("Auth system loaded. %d user(s) registered.\n", auth_system->user_count);
     }
+    
     if (!perm_system) {
         perm_system = perm_create();
     }
@@ -2849,13 +2872,15 @@ void sql_init(void) {
 }
 
 void sql_shutdown(void) {
-    sql_save();
+    if (table_count > 0) {
+        sql_save();
+    }
+    
     for (int i = 0; i < table_count; i++) {
         table_destroy(tables[i]);
     }
     table_count = 0;
     view_count = 0;
-    foreign_key_count = 0;
     if (active_wal) {
         wal_destroy(active_wal);
         active_wal = NULL;

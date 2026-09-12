@@ -204,6 +204,16 @@ void auth_generate_random_password(char *output, int length) {
 
 // ==================== AUTH IMPLEMENTATION ====================
 
+AuthSystem *auth_create_silent(void) {
+    AuthSystem *auth = (AuthSystem*)malloc(sizeof(AuthSystem));
+    if (!auth) return NULL;
+    
+    auth->user_count = 0;
+    auth->current_user_index = -1;
+    
+    return auth;
+}
+
 AuthSystem *auth_create(void) {
     AuthSystem *auth = (AuthSystem*)malloc(sizeof(AuthSystem));
     if (!auth) return NULL;
@@ -215,7 +225,7 @@ AuthSystem *auth_create(void) {
     char random_password[32];
     auth_generate_random_password(random_password, 24);
     
-    // Allow override via environment variable (useful for scripting)
+    // Allow override via environment variable
     const char *env_pw = getenv("HEAVENDB_INITIAL_PASSWORD");
     const char *password_to_use = (env_pw && strlen(env_pw) > 0) ? env_pw : random_password;
     
@@ -229,7 +239,7 @@ AuthSystem *auth_create(void) {
     auth->users[0].must_change_password = 1;
     auth->user_count = 1;
     
-    // Backup password to a file in user's home directory
+    // Backup password to a file
     const char *home = getenv("USERPROFILE");
     if (!home) home = getenv("HOME");
     
@@ -246,7 +256,7 @@ AuthSystem *auth_create(void) {
         }
     }
     
-    // Print to STDERR so pipes don't swallow it
+    // Print to STDERR
     fprintf(stderr, "\n");
     fprintf(stderr, "+==========================================================+\n");
     fprintf(stderr, "|           HeavenDB -- FIRST RUN SETUP                    |\n");

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define WAL_FILE "heaven.wal"
 #define WAL_MAGIC 0x57414C31
@@ -32,6 +33,7 @@ typedef struct {
     int count;
     int in_transaction;
     Savepoint *savepoints;
+    FILE *log_fp;  // Persistent file handle for real-time WAL writes
 } WAL;
 
 WAL *wal_create(void);
@@ -44,5 +46,9 @@ void wal_destroy(WAL *wal);
 int wal_savepoint(WAL *wal, const char *name);
 int wal_release_savepoint(WAL *wal, const char *name);
 int wal_rollback_to_savepoint(WAL *wal, const char *name);
+
+// Crash recovery: replays committed transactions from disk
+// Returns number of operations replayed, -1 on error
+int wal_recover(void);
 
 #endif // HEAVENDB_WAL_H
