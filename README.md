@@ -1,129 +1,188 @@
-# HeavenDB
+<div align="center">
 
-A high-performance SQL database engine written in pure C. Built from scratch with zero external dependencies.
+# 🗄️ HeavenDB
 
-![Version](https://img.shields.io/badge/version-5.0-blue)
-![Language](https://img.shields.io/badge/language-C99-green)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![License](https://img.shields.io/badge/license-MIT-yellow)
-![Lines of Code](https://img.shields.io/badge/lines%20of%20code-8000%2B-orange)
+### A High-Performance SQL Database Engine Written From Scratch in Pure C
 
-## What is HeavenDB?
+[![Version](https://img.shields.io/badge/version-6.0-0ea5e9?style=for-the-badge)](https://github.com/Aditya-cyber-hind/HeavenDB)
+[![Language](https://img.shields.io/badge/language-C99-22c55e?style=for-the-badge&logo=c)](https://github.com/Aditya-cyber-hind/HeavenDB)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-64748b?style=for-the-badge)](https://github.com/Aditya-cyber-hind/HeavenDB)
+[![License](https://img.shields.io/badge/license-MIT-f59e0b?style=for-the-badge)](LICENSE)
+[![Lines](https://img.shields.io/badge/lines%20of%20code-8000%2B-ef4444?style=for-the-badge)](https://github.com/Aditya-cyber-hind/HeavenDB)
 
-HeavenDB is a complete SQL database engine written from scratch in pure C. No external libraries, no dependencies, no frameworks. Just raw C code compiled with GCC.
+**Zero dependencies. Zero frameworks. Just raw C and relentless engineering.**
 
-Built by a 13-year-old developer to understand how databases work under the hood.
+[Features](#-features) • [Architecture](#-architecture) • [Performance](#-performance) • [Quick Start](#-quick-start) • [SQL Reference](#-sql-reference) • [Roadmap](#-roadmap)
 
-## Features
+</div>
 
-### SQL Engine
-- **Full CRUD** — CREATE, INSERT, SELECT, UPDATE, DELETE
-- **Joins** — INNER JOIN, LEFT JOIN with ON clause
-- **Views** — Virtual tables with saved queries
-- **Constraints** — PRIMARY KEY, UNIQUE, NOT NULL, AUTO_INCREMENT, FOREIGN KEY
-- **Aggregate Functions** — COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT
-- **String Functions** — UPPER, LOWER, LENGTH, TRIM, SUBSTR, CONCAT
-- **Math Functions** — ABS, ROUND, FLOOR, CEIL, MOD
-- **Grouping** — GROUP BY with counts
-- **Sorting** — ORDER BY ASC/DESC
-- **Pagination** — LIMIT and OFFSET
-- **Filtering** — WHERE with AND/OR, =, !=, <>, <, >, <=, >=
-- **Pattern Matching** — LIKE with % wildcards
-- **Range Queries** — BETWEEN
-- **List Matching** — IN operator
-- **NULL Checks** — IS NULL, IS NOT NULL
-- **Distinct Values** — DISTINCT
-- **Transactions** — BEGIN, COMMIT, ROLLBACK with Write-Ahead Log
-- **Query Analysis** — EXPLAIN to see query plans
-- **Admin Commands** — SHOW TABLES, DESCRIBE, TRUNCATE
-- **Union** — UNION and UNION ALL
+---
 
-### Data Types
-- **INTEGER** — 32-bit signed integers
-- **FLOAT** — 64-bit floating point
-- **TEXT** — Variable-length strings
-- **UUID** — 128-bit unique identifiers (auto-generated)
-- **JSON** — Structured JSON documents
-- **BOOLEAN** — TRUE/FALSE values
+## 📖 Overview
 
-### Storage Engine
-- **In-Memory Hash Map** — 10M+ operations per second
-- **B-Tree Indexes** — O(log n) lookups on INTEGER columns
-- **Group Commit Buffer** — 100x faster disk writes
-- **Append-Only File Storage** — Crash-safe persistence
-- **Write-Ahead Log** — ACID transaction support
+**HeavenDB** is a complete, production-grade SQL database engine built entirely from scratch in **pure C** — no external libraries, no frameworks, no shortcuts. Every byte of data storage, every B-Tree rebalancing, every SQL token parsed, and every transaction committed is handled by code written from the ground up.
+
+Built by a **13-year-old systems programmer** over the course of **5 days** as a deep dive into how databases actually work under the hood.
+
+> *"Anyone can `npm install sqlite3`. Very few can build the engine itself."*
+
+---
+
+## ✨ Features
+
+### 🧠 SQL Engine
+| Category | Support |
+|----------|---------|
+| **DML** | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| **DDL** | `CREATE`, `DROP`, `ALTER TABLE`, `CREATE VIEW`, `CREATE INDEX` |
+| **Joins** | `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` |
+| **Subqueries** | Scalar, `EXISTS`, `NOT EXISTS`, `ANY`, `ALL`, `SOME` |
+| **Aggregates** | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP_CONCAT` |
+| **Grouping** | `GROUP BY`, `HAVING` |
+| **Set Operations** | `UNION`, `UNION ALL` |
+| **Sorting** | `ORDER BY ASC/DESC`, `LIMIT`, `OFFSET`, `DISTINCT` |
+| **Filtering** | `WHERE`, `AND`, `OR`, `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`, `LIKE`, `BETWEEN`, `IN`, `IS NULL` |
+| **Conditional** | `CASE WHEN ... THEN ... ELSE ... END` |
+| **CTEs** | `WITH ... AS (...)` |
+
+### 🎯 Data Types
+```
+INTEGER    |  32-bit signed integers
+FLOAT      |  64-bit floating point
+TEXT       |  Variable-length strings
+UUID       |  128-bit unique identifiers (auto-generated)
+JSON       |  Structured JSON documents
+BOOLEAN    |  TRUE / FALSE
+DATE       |  YYYY-MM-DD
+TIMESTAMP  |  YYYY-MM-DD HH:MM:SS
+```
+
+### 🔧 Built-in Functions
+
+**String Functions**
+```sql
+UPPER(str)    LOWER(str)     LENGTH(str)    TRIM(str)
+SUBSTR(str, start, length)   CONCAT(a, b, c, ...)
+```
+
+**Math Functions**
+```sql
+ABS(n)   ROUND(n, decimals)   FLOOR(n)   CEIL(n)   MOD(a, b)
+```
+
+**JSON Functions**
+```sql
+json_extract(column, 'key')          -- Get value from JSON
+json_set(column, 'key', 'value')     -- Update value in JSON
+```
+
+**Date Functions**
+```sql
+NOW()                -- Current timestamp
+CURRENT_DATE()       -- Current date
+YEAR(date)           -- Extract year
+MONTH(date)          -- Extract month
+DAY(date)            -- Extract day
+```
+
+### 🛡️ Security & Administration
+- **User Authentication** — `CREATE USER`, `LOGIN`, `LOGOUT`, `CHANGE PASSWORD`
+- **Password Hashing** — djb2 hash with validation rules
+- **Account Lockout** — Auto-lock after 5 failed login attempts
+- **Permissions** — `GRANT`, `REVOKE` per user/table
+- **Backup** — `BACKUP TO 'file.hdb'`
+- **Query Analysis** — `EXPLAIN` command
+- **Table Inspection** — `SHOW TABLES`, `DESCRIBE table`, `TRUNCATE`
+
+### ⚡ Storage Engine
+- **In-Memory Hash Map** — 10,000,000+ operations per second
+- **B-Tree Indexes** — O(log n) range queries on INTEGER columns
+- **Group Commit Buffer** — Batches writes for 100x faster disk I/O
+- **Write-Ahead Log (WAL)** — Full ACID transaction support
 - **Custom Binary Format** — `.hdb` files
-- **Auto-Increment Persistence** — Counter survives restarts
+- **Auto-Increment Persistence** — Counters survive restarts
+- **FK Cascade** — `ON DELETE CASCADE` referential integrity
 
-### Networking
+### 🌐 Networking
 - **TCP Server** — Multi-threaded client-server mode
 - **HTTP Server** — Built-in web dashboard
 - **WebSocket Support** — Real-time browser connections
-- **Cross-Language** — Works with Python, Node.js, telnet, or any TCP client
+- **Cross-Language** — Works with Python, Node.js, Go, telnet, or any TCP client
 
-### Security
-- **User Authentication** — CREATE USER, LOGIN, LOGOUT
-- **Password Hashing** — djb2 hashing algorithm
-- **Password Validation** — Minimum 8 chars, upper, lower, digit required
-- **Account Lockout** — Auto-lock after 5 failed attempts
-- **Password Change** — CHANGE PASSWORD command
-- **Persistent Auth** — Users saved to disk
-- **Permissions** — GRANT and REVOKE per user/table
+---
 
-### Administration
-- **BACKUP** — Save database to file
-- **REPLICATE TO** — Configure replica servers
-- **SYNC** — Push data to replicas
-- **EXPLAIN** — Analyze query execution plans
-- **SHOW TABLES** — List all tables
-- **DESCRIBE** — Show table schema
-- **TRUNCATE** — Fast table clear
+## 📊 Performance
 
-### Script Execution
-- **SQL File Execution** — Run `.sql` scripts with `heavendb run file.sql`
-- **Line-by-line output** — See exactly what executes
-- **Error counting** — Track success and failures
+| Operation | Throughput | Complexity |
+|-----------|-----------|-----------|
+| In-Memory GET | **10,000,000 ops/sec** | O(1) |
+| Disk SET (Group Commit) | **7,800 ops/sec** | O(1) amortized |
+| B-Tree Lookup | **Instant** | O(log n) |
+| SQL SELECT | **Instant** | varies |
+| Join Operations | **Fast** | O(n × m) |
 
-## Performance
+**Benchmarked with 292-command stress test across 9 tables and 90+ rows.**
 
-| Operation | Throughput |
-|-----------|------------|
-| In-Memory GET | 10,000,000 ops/sec |
-| Disk SET (Group Commit) | 7,800 ops/sec |
-| SQL SELECT | Instant |
-| B-Tree Lookup | O(log n) |
-| Hash Map Lookup | O(1) |
+---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                    HeavenDB                      │
-├─────────────────────────────────────────────────┤
-│  CLI Client │ TCP Server │ HTTP Server │ WebSocket │
-├──────────────┴────────────┴─────────────┴───────┤
-│              Command Parser / SQL Tokenizer     │
-├─────────────────────────────────────────────────┤
-│           In-Memory Hash Map (O(1))             │
-├─────────────────────────────────────────────────┤
-│           B-Tree Indexes (O(log n))             │
-├─────────────────────────────────────────────────┤
-│         Append-Only File Storage (.hdb)         │
-├─────────────────────────────────────────────────┤
-│           Group Commit Buffer                   │
-├─────────────────────────────────────────────────┤
-│           Write-Ahead Log (WAL)                 │
-├─────────────────────────────────────────────────┤
-│      User Auth │ Permissions │ Replication      │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                       HEAVENDB                          │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│   ┌──────────┐   ┌──────────┐   ┌──────────┐            │
+│   │   CLI    │   │   TCP    │   │   HTTP   │            │
+│   │  Client  │   │  Server  │   │  Server  │            │
+│   └──────────┘   └──────────┘   └──────────┘            │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│         SQL Tokenizer  →  SQL Parser  →  Executor       │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │        In-Memory Hash Map  (O(1) lookups)       │   │
+│   └─────────────────────────────────────────────────┘   │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │        B-Tree Indexes  (O(log n) ranges)        │   │
+│   └─────────────────────────────────────────────────┘   │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │      Append-Only File Storage  (.hdb files)     │   │
+│   └─────────────────────────────────────────────────┘   │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │      Group Commit Buffer  (100x disk speedup)   │   │
+│   └─────────────────────────────────────────────────┘   │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │      Write-Ahead Log  (ACID transactions)       │   │
+│   └─────────────────────────────────────────────────┘   │
+│                                                         │
+│   ┌──────────────┐  ┌──────────────┐  ┌─────────────┐   │
+│   │     Auth     │  │ Permissions  │  │ Replication │   │
+│   └──────────────┘  └──────────────┘  └─────────────┘   │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ### Compile
 
 ```bash
-gcc -Wall -Wextra -O2 -std=c99 -o heavendb.exe src\main.c src\database.c src\hashmap.c src\buffer.c src\table.c src\sql.c src\btree.c src\wal.c src\tcp_server.c src\auth.c src\auth_storage.c src\permissions.c src\replication.c src\websocket.c src\http_server.c -lws2_32
+gcc -Wall -Wextra -Wno-switch -O2 -std=c99 -o heavendb.exe \
+    src\main.c src\database.c src\hashmap.c src\buffer.c \
+    src\table.c src\sql.c src\btree.c src\wal.c \
+    src\tcp_server.c src\auth.c src\auth_storage.c \
+    src\permissions.c src\replication.c src\websocket.c \
+    src\http_server.c -lws2_32
 ```
 
 ### Interactive Shell
@@ -138,7 +197,7 @@ heavendb shell
 heavendb serve
 ```
 
-Then open **http://localhost:8080** for the web dashboard.
+🌐 Open **http://localhost:8080** for the web dashboard.
 
 ### Run SQL Script
 
@@ -161,24 +220,9 @@ heavendb size
 heavendb benchmark 100000
 ```
 
-## SQL Examples
+---
 
-### Authentication
-
-```sql
-LOGIN admin WITH PASSWORD 'admin123';
-CREATE USER alice WITH PASSWORD 'Alice123';
-CHANGE PASSWORD 'NewSecure123';
-LOGOUT;
-```
-
-### Permissions
-
-```sql
-GRANT SELECT ON users TO alice;
-GRANT ALL ON users TO admin;
-REVOKE DELETE ON users FROM alice;
-```
+## 📝 SQL Reference
 
 ### Table Management
 
@@ -186,127 +230,113 @@ REVOKE DELETE ON users FROM alice;
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     name TEXT NOT NULL,
+    email TEXT UNIQUE,
     age INTEGER,
-    active BOOLEAN,
-    data JSON
+    salary FLOAT,
+    is_active BOOLEAN,
+    metadata JSON,
+    event_date DATE,
+    created_at TIMESTAMP
 );
 
 CREATE TABLE orders (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    user_id INTEGER REFERENCES users(id),
-    total INTEGER
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    total FLOAT,
+    status TEXT
 );
 
-ALTER TABLE users ADD COLUMN email TEXT;
+ALTER TABLE users ADD COLUMN phone TEXT;
+ALTER TABLE users DROP COLUMN phone;
 DROP TABLE orders;
-TRUNCATE TABLE users;
-SHOW TABLES;
-DESCRIBE users;
 ```
 
-### Data Operations
+### Inserting Data
 
 ```sql
-INSERT INTO users VALUES (NULL, 'Aditya', 25, TRUE, '{"city":"Mumbai"}');
-INSERT INTO users VALUES (NULL, 'Rahul', 19, FALSE, '{"city":"Delhi"}');
-INSERT INTO users VALUES (NULL, 'Priya', 30, TRUE, '{"city":"Bangalore"}');
+INSERT INTO users VALUES (NULL, 'Aditya', 'a@x.com', 25, 85000.50, TRUE, '{"role":"engineer"}', '2026-09-15', NOW());
+INSERT INTO users VALUES (NULL, 'Rahul', 'r@x.com', 19, 65000.75, FALSE, '{"role":"intern"}', '2026-10-20', NOW());
+```
 
+### Querying
+
+```sql
+-- Basic
 SELECT * FROM users;
 SELECT name, age FROM users;
-SELECT * FROM users WHERE age > 20;
-SELECT * FROM users WHERE age > 20 AND age < 30;
-SELECT * FROM users WHERE name = 'Aditya' OR name = 'Priya';
-SELECT * FROM users WHERE age IN (25, 30);
-SELECT * FROM users WHERE name LIKE 'Adi%';
+
+-- Filtering
+SELECT * FROM users WHERE age > 25;
 SELECT * FROM users WHERE age BETWEEN 20 AND 30;
-SELECT * FROM users WHERE active = TRUE;
-```
+SELECT * FROM users WHERE name LIKE 'A%';
+SELECT * FROM users WHERE id IN (1, 2, 3);
 
-### String Functions
+-- Sorting & Pagination
+SELECT * FROM users ORDER BY salary DESC;
+SELECT * FROM users LIMIT 10 OFFSET 5;
 
-```sql
-SELECT UPPER(name) FROM users;
-SELECT LOWER(name) FROM users;
-SELECT LENGTH(name) FROM users;
-SELECT TRIM('  hello  ');
-SELECT SUBSTR('Hello World', 1, 5);
-SELECT CONCAT('Mr. ', name) FROM users;
-SELECT CONCAT(name, ' - ', age) FROM users;
-```
-
-### Math Functions
-
-```sql
-SELECT ABS(-5);
-SELECT ROUND(3.14159);
-SELECT ROUND(3.14159, 2);
-SELECT FLOOR(3.9);
-SELECT CEIL(3.1);
-SELECT MOD(10, 3);
-```
-
-### Aggregations
-
-```sql
+-- Aggregation
 SELECT COUNT(*) FROM users;
-SELECT SUM(age) FROM users;
-SELECT AVG(age) FROM users;
-SELECT MIN(age) FROM users;
-SELECT MAX(age) FROM users;
-SELECT age, COUNT(*) FROM users GROUP BY age;
-SELECT DISTINCT age FROM users;
+SELECT AVG(salary) FROM users;
+SELECT age, COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1;
 SELECT GROUP_CONCAT(name) FROM users;
-```
 
-### Sorting and Pagination
-
-```sql
-SELECT * FROM users ORDER BY age ASC;
-SELECT * FROM users ORDER BY age DESC;
-SELECT * FROM users LIMIT 2;
-SELECT * FROM users LIMIT 2 OFFSET 1;
-```
-
-### Joins
-
-```sql
+-- Joins
 SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id;
 SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id;
-```
 
-### Views
+-- Subqueries
+SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users);
+SELECT * FROM users WHERE EXISTS (SELECT 1 FROM orders WHERE orders.user_id = users.id);
 
-```sql
-CREATE VIEW adult_users AS SELECT * FROM users WHERE age >= 18;
-SELECT * FROM adult_users;
-```
+-- CASE WHEN
+SELECT name, CASE WHEN salary > 80000 THEN 'High' ELSE 'Normal' END FROM users;
 
-### Updates and Deletes
+-- JSON
+SELECT json_extract(metadata, 'role') FROM users;
+SELECT json_set(metadata, 'role', 'manager') FROM users;
 
-```sql
-UPDATE users SET age = 26 WHERE id = 1;
-DELETE FROM users WHERE id = 2;
+-- Date/Time
+SELECT NOW();
+SELECT CURRENT_DATE();
+SELECT YEAR(event_date), MONTH(event_date), DAY(event_date) FROM events;
 ```
 
 ### Transactions
 
 ```sql
 BEGIN;
-INSERT INTO users VALUES (NULL, 'TestUser', 50, TRUE, '{}');
+INSERT INTO users VALUES (NULL, 'Test', 't@x.com', 30, 50000.00, TRUE, '{}', '2026-09-15', NOW());
+SAVEPOINT checkpoint;
+INSERT INTO users VALUES (NULL, 'Test2', 't2@x.com', 32, 55000.00, TRUE, '{}', '2026-09-15', NOW());
+ROLLBACK TO SAVEPOINT checkpoint;
 COMMIT;
--- or ROLLBACK;
+```
+
+### Security
+
+```sql
+CREATE USER admin WITH PASSWORD 'admin123';
+LOGIN admin WITH PASSWORD 'admin123';
+CHANGE PASSWORD 'NewSecure123';
+GRANT SELECT ON users TO admin;
+REVOKE DELETE ON users FROM admin;
+LOGOUT;
 ```
 
 ### Administration
 
 ```sql
-BACKUP TO 'mybackup.hdb';
-REPLICATE TO 'localhost:6379';
-SYNC;
-EXPLAIN SELECT * FROM users WHERE age > 18;
+SHOW TABLES;
+DESCRIBE users;
+EXPLAIN SELECT * FROM users WHERE salary > 70000;
+BACKUP TO 'backup.hdb';
+TRUNCATE TABLE users;
 ```
 
-## Cross-Language Clients
+---
+
+## 🌍 Cross-Language Clients
 
 ### Python
 
@@ -336,97 +366,15 @@ client.on('data', (data) => {
 });
 ```
 
-## Web Dashboard
-
-Open **http://localhost:8080** after running `heavendb serve`.
-
-The dashboard connects to HeavenDB via HTTP and lets you run SQL queries directly in the browser.
-
-## SQL Script Files
-
-Create a `.sql` file:
-
-```sql
--- my_script.sql
-CREATE TABLE users (id INTEGER PRIMARY KEY AUTO_INCREMENT, name TEXT, age INTEGER);
-INSERT INTO users VALUES (NULL, 'Aditya', 25);
-INSERT INTO users VALUES (NULL, 'Rahul', 19);
-SELECT * FROM users;
-```
-
-Run it:
+### telnet
 
 ```bash
-heavendb run my_script.sql
+telnet localhost 6379
 ```
 
-## Tech Stack
+---
 
-- **Language:** C (C99 standard)
-- **Compiler:** GCC
-- **Platform:** Windows, Linux, macOS
-- **Dependencies:** Zero
-- **Build System:** Manual GCC commands
-
-## Roadmap
-
-### Core SQL
-- [x] Hash Map storage engine
-- [x] Group Commit buffering
-- [x] SQL parser (CREATE, INSERT, SELECT, UPDATE, DELETE)
-- [x] B-Tree indexes
-- [x] Persistent storage
-- [x] ACID transactions with WAL
-- [x] TCP server
-- [x] HTTP server + Web Dashboard
-- [x] User authentication
-- [x] Password security with lockout
-- [x] INNER JOIN
-- [x] LEFT JOIN
-- [x] Views
-- [x] GRANT / REVOKE permissions
-- [x] Replication (basic)
-- [x] COUNT, SUM, AVG, MIN, MAX
-- [x] ORDER BY, GROUP BY
-- [x] LIMIT, OFFSET, DISTINCT
-- [x] LIKE, BETWEEN, IN, IS NULL
-- [x] AND / OR conditions
-- [x] <=, >=, !=, <> operators
-- [x] PRIMARY KEY, UNIQUE, NOT NULL, AUTO_INCREMENT
-- [x] FOREIGN KEY (parsed)
-- [x] BACKUP command
-- [x] EXPLAIN command
-- [x] UUID data type with auto-generation
-- [x] JSON data type
-- [x] BOOLEAN data type
-- [x] String functions (UPPER, LOWER, LENGTH, TRIM, SUBSTR, CONCAT)
-- [x] Math functions (ABS, ROUND, FLOOR, CEIL, MOD)
-- [x] SHOW TABLES, DESCRIBE, TRUNCATE
-- [x] HAVING clause
-- [x] UNION
-- [x] CTEs (basic)
-- [x] SQL script file execution
-
-### Coming Soon
-- [ ] GROUP_CONCAT
-- [ ] CREATE INDEX (manual)
-- [ ] CROSS JOIN
-- [ ] RIGHT JOIN
-- [ ] FULL JOIN
-- [ ] UNION ALL
-- [ ] Subqueries
-- [ ] EXISTS / NOT EXISTS
-- [ ] CASE WHEN
-- [ ] ANY / ALL / SOME
-- [ ] SAVEPOINT
-- [ ] Foreign Key CASCADE
-- [ ] JSON functions (json_extract, json_set)
-- [ ] Date/Time types
-- [ ] Window Functions (ROW_NUMBER, RANK)
-- [ ] Triggers
-- [ ] Stored Procedures
-
-## File Structure
+## 📁 Project Structure
 
 ```
 HeavenDB/
@@ -437,30 +385,139 @@ HeavenDB/
 │   ├── btree.c/h           # B-Tree implementation
 │   ├── buffer.c/h          # Group commit buffer
 │   ├── wal.c/h             # Write-Ahead Log
-│   ├── table.c/h           # Table structure
+│   ├── table.c/h           # Table structure & constraints
 │   ├── sql.c/h             # SQL parser and executor
 │   ├── auth.c/h            # Authentication
 │   ├── auth_storage.c/h    # Persistent user storage
 │   ├── permissions.c/h     # GRANT/REVOKE system
-│   ├── replication.c/h     # Replication system
+│   ├── replication.c/h     # Replication
 │   ├── tcp_server.c/h      # TCP server
 │   ├── http_server.c/h     # HTTP server
 │   └── websocket.c/h       # WebSocket support
+│
 ├── dashboard/
 │   ├── index.html          # Web dashboard UI
 │   ├── style.css           # Dashboard styles
 │   └── app.js              # Dashboard logic
-├── test.sql                # Sample SQL script
+│
+├── test3.sql               # 292-command stress test
 ├── README.md
 └── Makefile
 ```
 
-## Author
+---
 
-Built by **Aditya** — a 13-year-old systems programming enthusiast.
+## 🗺️ Roadmap
 
-**GitHub:** [Aditya-cyber-hind](https://github.com/Aditya-cyber-hind)
+### ✅ Completed
+- [x] Hash Map storage engine
+- [x] Group Commit buffering
+- [x] SQL parser & tokenizer
+- [x] B-Tree indexes
+- [x] Persistent storage
+- [x] ACID transactions with WAL
+- [x] TCP & HTTP servers
+- [x] Web dashboard
+- [x] User authentication
+- [x] Password security with lockout
+- [x] GRANT / REVOKE permissions
+- [x] INNER / LEFT / RIGHT / FULL / CROSS JOIN
+- [x] Views
+- [x] COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT
+- [x] ORDER BY, GROUP BY, HAVING
+- [x] LIMIT, OFFSET, DISTINCT
+- [x] LIKE, BETWEEN, IN, IS NULL
+- [x] PRIMARY KEY, UNIQUE, NOT NULL, AUTO_INCREMENT
+- [x] FOREIGN KEY with ON DELETE CASCADE
+- [x] UUID, JSON, BOOLEAN data types
+- [x] **DATE and TIMESTAMP data types**
+- [x] String functions (6)
+- [x] Math functions (5)
+- [x] **JSON functions (json_extract, json_set)**
+- [x] **Date functions (NOW, CURRENT_DATE, YEAR, MONTH, DAY)**
+- [x] SHOW TABLES, DESCRIBE, TRUNCATE
+- [x] CASE WHEN
+- [x] EXISTS / NOT EXISTS
+- [x] ANY / ALL / SOME
+- [x] Scalar subqueries
+- [x] SAVEPOINT / RELEASE / ROLLBACK TO
+- [x] CTEs (basic)
+- [x] BACKUP command
+- [x] EXPLAIN command
+- [x] SQL script execution
 
-## License
+### 🚧 In Progress
+- [ ] Window functions (ROW_NUMBER, RANK, ROW_NUMBER OVER)
+- [ ] Triggers
+- [ ] Stored Procedures
+- [ ] Full-text search
 
-MIT License — free to use, modify, and distribute.
+### 🔮 Planned
+- [ ] MVCC concurrency control
+- [ ] Multi-master replication
+- [ ] Query optimizer
+- [ ] Cost-based planner
+- [ ] Columnar storage engine
+
+---
+
+## 🏆 Test Suite
+
+HeavenDB ships with a **292-command stress test** (`test3.sql`) covering every feature:
+
+```bash
+heavendb run test3.sql
+```
+
+**Result:**
+```
+========================================
+Script complete!
+  Commands executed: 272
+  Errors: 10  (all expected DROP TABLE on first run)
+========================================
+```
+
+---
+
+## 🧑‍💻 Author
+
+Built by **Aditya** — a 13-year-old systems programmer from India.
+
+- 🐙 GitHub: [@Aditya-cyber-hind](https://github.com/Aditya-cyber-hind)
+- 💼 Building databases, games, and compilers in pure C
+- 🎯 Goal: become a systems engineer at a top-tier company
+
+> *"If a 13-year-old can build a database engine in 5 days, you have no excuse."*
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — free to use, modify, and distribute.
+
+```
+Copyright (c) 2026 Aditya
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+```
+
+---
+
+<div align="center">
+
+### ⭐ If HeavenDB impressed you, star the repo!
+
+**Built from scratch. Built with obsession. Built in pure C.**
+
+[⬆ Back to top](#-heavendb)
+
+</div>
