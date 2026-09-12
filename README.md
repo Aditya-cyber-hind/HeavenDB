@@ -6,15 +6,16 @@
 
 ### A SQL Database Engine Built From Scratch in Pure C
 
-**Zero dependencies. Zero frameworks. Just raw C, B-Trees, WAL, and 5 days of obsession.**
+**No third-party libraries. Just the C standard library, Winsock, and 5 days of obsession.**
 
 [![Language](https://img.shields.io/badge/C-C99-22c55e?style=for-the-badge&logo=c&logoColor=white&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 [![Platform](https://img.shields.io/badge/Windows-MinGW-64748b?style=for-the-badge&logo=windows&logoColor=white&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 [![License](https://img.shields.io/badge/MIT-License-f59e0b?style=for-the-badge&labelColor=1e293b)](LICENSE)
-[![Tests](https://img.shields.io/badge/272%20commands-passing-22c55e?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
+[![Unit Tests](https://img.shields.io/badge/unit%20tests-11%2F11%20passing-22c55e?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
+[![Integration](https://img.shields.io/badge/integration-272%20commands-22c55e?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 [![Security](https://img.shields.io/badge/PBKDF2-100k%20iterations-ef4444?style=for-the-badge&labelColor=1e293b)](https://github.com/Aditya-cyber-hind/HeavenDB)
 
-[**Features**](#-features) · [**Architecture**](#-architecture) · [**Build**](#-building) · [**Limitations**](#️-known-limitations) · [**SQL Reference**](#-sql-reference) · [**Roadmap**](#-roadmap)
+[Features](#-features) · [Architecture](#-architecture) · [Build](#-building) · [Limitations](#️-known-limitations) · [SQL Reference](#-sql-reference) · [Roadmap](#-roadmap)
 
 </div>
 
@@ -28,7 +29,19 @@ It is an **educational project** designed to demonstrate how real databases work
 
 > *"Anyone can `npm install sqlite3`. Very few can build the engine itself."*
 
-**Built by a 13-year-old systems programmer in 5 days.**
+### Why Build This?
+
+Because databases are the black box of modern software. Every app uses one; few developers know how they actually work.
+
+I wanted to understand:
+- How does a `SELECT` query know where to find a row without scanning the whole file?
+- What actually happens when you `COMMIT` a transaction — and why does a crash not corrupt your data?
+- How does an index make lookups 1000x faster?
+- What does a SQL parser actually do?
+
+So I read the SQLite internals, studied PostgreSQL's WAL design, and built HeavenDB to answer those questions by writing the code myself.
+
+This isn't a competitor to SQLite. It's what I built to learn how SQLite works.
 
 ---
 
@@ -46,12 +59,10 @@ It is an **educational project** designed to demonstrate how real databases work
 | **DDL** | `CREATE`, `DROP`, `ALTER TABLE` |
 | **Views** | `CREATE VIEW`, `DROP VIEW` |
 | **Indexes** | `CREATE INDEX` |
-| **Joins** | `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` * |
+| **Joins** | `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` (equality only) |
 | **Subqueries** | `EXISTS`, `NOT EXISTS`, `ANY`, `ALL`, `SOME` |
 | **Set ops** | `UNION`, `UNION ALL` |
 | **CTEs** | `WITH ... AS (...)` |
-
-> \* Simple equality joins only. See [Known Limitations](#-joins).
 
 </td>
 <td width="50%" valign="top">
@@ -137,6 +148,7 @@ DAY(date)
 ### 🛡️ Security & Administration
 
 - 🔐 **PBKDF2-HMAC-SHA256** password hashing with **100,000 iterations** and per-user salts
+- 🎲 **Random password on first run** — no default credentials to leak
 - 🔒 Account lockout after 5 failed login attempts
 - ✅ Password validation (min 8 chars, uppercase, lowercase, digit)
 - 👥 User management: `CREATE USER`, `LOGIN`, `LOGOUT`, `CHANGE PASSWORD`
@@ -169,25 +181,20 @@ DAY(date)
 HeavenDB is an **educational project**, not a production database. Here's what it can't do:
 
 ### 🔒 Concurrency
-- **Writers serialize.** A global write lock means **only one writer can execute at a time.** Concurrent `INSERT`/`UPDATE`/`DELETE` operations will block. There is no MVCC (Multi-Version Concurrency Control).
+- **Writers serialize.** A global write lock means **only one writer can execute at a time.** Concurrent `INSERT`/`UPDATE`/`DELETE` operations will block. There is no MVCC.
 - **No transaction isolation levels.** Nested transactions are not supported beyond `SAVEPOINT`.
 - **Reads can be stale.** A reader thread can see partial state during a concurrent write.
 
 ### 📊 Performance Reality
-- The **"10M ops/sec"** figure is measured on a **1,000-key working set** — small enough to fit entirely in **L1 CPU cache**. Real workloads with millions of keys will be **orders of magnitude slower**.
-- **SQL queries do linear scans** unless they use an indexed `INTEGER` column.
 - **`GROUP BY`, `ORDER BY`, and `JOIN` are O(n²)** naive algorithms. Fine for thousands of rows; not for millions.
 - **The database file is rewritten on every write** via `sql_save()`. Real databases use incremental WAL replay.
+- **B-Tree indexes support only `INTEGER` columns.** `TEXT`, `UUID`, `DATE` columns do full table scans.
 
 ### 📝 Write-Ahead Log (WAL)
 - The WAL is written during transactions but **not replayed on startup**. Actual state comes from the main `.hdb` file.
 - **If the process crashes mid-transaction, uncommitted changes are lost.**
 - The WAL is currently used **only for in-session rollback** — not for durable crash recovery.
 - Real crash recovery (WAL replay on boot) is on the roadmap.
-
-### 🌳 Indexing
-- B-Tree indexes support **only `INTEGER` columns**.
-- `TEXT`, `UUID`, `DATE`, `TIMESTAMP`, `JSON`, and `BOOLEAN` columns do full table scans.
 
 ### 🔗 Joins
 - `INNER`, `LEFT`, `RIGHT`, `FULL`, `CROSS` joins work with **simple `ON table1.col = table2.col` equality conditions only.**
@@ -201,24 +208,21 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 ### 📡 Replication
 - "Replication" in HeavenDB means **manual file copy**. The `REPLICATE TO` and `SYNC` commands are **stubs** that return success but do not actually sync data.
 - **No streaming replication. No master-slave. No conflict resolution.**
-- Real replication is on the roadmap.
 
 ### 🧪 Testing & CI
-- Only **one integration test** file (`test3.sql`, 272 commands).
-- **No unit tests** for `hashmap.c`, `btree.c`, `wal.c`, or `buffer.c`.
+- **11 unit tests** for `hashmap.c` (all passing).
+- **No unit tests** yet for `btree.c`, `wal.c`, or `buffer.c`.
 - **No GitHub Actions CI** running on every commit.
 - **No fuzz testing** on the SQL parser.
 
 ### 🌍 Portability
 - The networking layer uses **Winsock** (Windows-only). Linux/macOS require a POSIX port (on the roadmap).
-- Compile flags (`-lws2_32`, backslash paths) are Windows-specific.
 
 ### 🔐 Security Caveats
 - Passwords use **PBKDF2-HMAC-SHA256** — this part is solid.
 - **No timing-attack protection** on password comparison.
 - **No SQL injection protection** — the parser is homegrown.
 - **No TLS/SSL** on the network layer. Traffic is plaintext.
-- On first run, an `admin` account is created with the password `Admin1234`. **This is a bootstrap credential only — change it in your first session.**
 
 ### 🚫 Not Supported
 - Window functions (`ROW_NUMBER`, `RANK`)
@@ -234,19 +238,30 @@ HeavenDB is an **educational project**, not a production database. Here's what i
 
 ## 📊 Performance
 
-**Honest benchmarks** on a standard development laptop (Windows, 4-core CPU, 8GB RAM):
+**Honest benchmarks** on a standard development laptop (Windows, 4-core CPU, 8GB RAM). All numbers are reproducible with `heavendb benchmark 100000`.
 
-| Operation | Throughput | What It Actually Measures |
-|-----------|:----------:|---------------------------|
-| In-memory GET (1k keys) | ~10,000,000 ops/sec | **L1 cache throughput** — not realistic for large datasets |
-| In-memory GET (1M keys) | *(not yet benchmarked)* | Would be significantly slower — depends on cache misses |
-| Disk SET (Group Commit) | ~7,800 ops/sec | Batched writes, 100 per flush |
-| PBKDF2 password hash | ~50 hashes/sec | Intentional — 100k SHA-256 iterations |
-| SQL SELECT | Linear scan | ~1M rows/sec on integer comparisons |
+### In-Memory GET (varying working set sizes)
 
-> ⚠️ **These numbers reflect local hardware under ideal conditions.** They are **not** indicative of production throughput. Real performance depends on working set size, disk speed, and concurrency.
+| Working Set | Throughput | CPU Cache Level |
+|:-----------:|:----------:|-----------------|
+| 100 keys | **~8,300,000 ops/sec** | L1 cache |
+| 1,000 keys | **~7,100,000 ops/sec** | L1/L2 cache |
+| 10,000 keys | **~5,900,000 ops/sec** | L2 cache |
+| 100,000 keys | **~2,200,000 ops/sec** | L3 cache |
+| 1,000,000 keys | **~65,000 ops/sec** | Main memory |
+
+**Interpretation:** Performance drops **128x** as the working set grows from 100 keys to 1M keys. The "10M ops/sec" figure only applies when the entire dataset fits in L1 cache. Real workloads fall in the **100k–10M key range** where throughput is ~65k–2.2M ops/sec.
+
+### Disk Operations
+
+| Operation | Throughput | Notes |
+|-----------|:----------:|-------|
+| Disk SET (Group Commit) | **~7,800 ops/sec** | Batched writes, 100 per flush |
+| PBKDF2 password hash | **~50 hashes/sec** | Intentional — 100k SHA-256 iterations |
+
+> ⚠️ **These are local machine numbers under ideal conditions.** They are **not** production benchmarks. Real throughput depends on working set size, disk speed, and concurrency.
 >
-> Run `heavendb benchmark 100000` on your own machine to verify. **Do not cite these numbers in production planning.**
+> **Do not cite these numbers in production planning.**
 
 ---
 
@@ -338,11 +353,34 @@ heavendb serve
 # Run a SQL script
 heavendb run script.sql
 
-# Run the stress test (272 commands)
+# Run the integration test (272 commands)
 heavendb run test3.sql
 
-# Benchmark
+# Benchmark: runs lookups at multiple working-set sizes
+# Argument is number of operations, not dataset size.
 heavendb benchmark 100000
+```
+
+### First-Run Setup
+
+On the very first run, HeavenDB generates a **random admin password** and prints it once:
+
+```
++==========================================================+
+|           HeavenDB -- FIRST RUN SETUP                    |
++==========================================================+
+|  Username: admin                                         |
+|  Password: Tj45bZi128yB%6A1R9BrnWm                       |
+|                                                          |
+|  !!! COPY THIS PASSWORD NOW -- it will NOT be shown !!!  |
++==========================================================+
+```
+
+**Copy this password immediately.** It will never be shown again. Change it in your first session:
+
+```sql
+LOGIN admin WITH PASSWORD 'Tj45bZi128yB%6A1R9BrnWm';
+CHANGE PASSWORD 'YourNewSecure456';
 ```
 
 ---
@@ -436,9 +474,8 @@ COMMIT;
 ### Security
 
 ```sql
--- On first run, HeavenDB bootstraps an 'admin' user with password 'Admin1234'.
--- This is a bootstrap credential ONLY. Change it in your first session.
-LOGIN admin WITH PASSWORD 'Admin1234';
+-- First run generates a random admin password. Copy it from console output.
+LOGIN admin WITH PASSWORD '<the-random-password>';
 CHANGE PASSWORD 'YourNewSecure456';
 
 CREATE USER alice WITH PASSWORD 'AlicePass789';
@@ -447,7 +484,7 @@ REVOKE DELETE ON users FROM alice;
 LOGOUT;
 ```
 
-> ⚠️ **The default password `Admin1234` is publicly documented.** Change it immediately. HeavenDB enforces min 8 chars, uppercase, lowercase, digit for any new password.
+HeavenDB enforces **min 8 chars, uppercase, lowercase, digit** for any new password. Passwords are hashed with **PBKDF2-HMAC-SHA256 (100,000 iterations)** and a per-user random salt.
 
 ### Administration
 
@@ -463,6 +500,8 @@ TRUNCATE TABLE users;
 
 ## 🌍 Cross-Language Clients
 
+> ⚠️ These examples are **minimal**. The protocol is line-based — send a SQL statement terminated by `\n`, and read until you see the row-count line. For production use, add reconnection logic, framing, and timeouts.
+
 ### Python
 
 ```python
@@ -470,8 +509,20 @@ import socket
 
 s = socket.socket()
 s.connect(('localhost', 6379))
+
+print(s.recv(4096).decode())           # welcome banner
+
 s.send(b'SELECT * FROM users\n')
-print(s.recv(4096).decode())
+
+response = b''
+while True:
+    chunk = s.recv(4096)
+    if not chunk: break
+    response += chunk
+    if b'row' in chunk or b'(nil)' in chunk:
+        break
+
+print(response.decode())
 s.close()
 ```
 
@@ -498,9 +549,29 @@ telnet localhost 6379
 
 ## 🧪 Testing
 
+### Unit Tests — `hashmap.c`
+
+HeavenDB has **11 unit tests** for the hash map implementation:
+
+```bash
+gcc -Wall -Wextra -O2 -std=c99 -o tests\test_hashmap.exe tests\test_hashmap.c src\hashmap.c
+tests\test_hashmap.exe
+```
+
+Result:
+
+```
+========================================
+  Passed: 11
+  Failed: 0
+========================================
+```
+
+Covers: creation, set/get, updates, deletion, missing keys, 10,000-key inserts, hash collisions, empty values, 1000-char values, and edge cases.
+
 ### Integration Test
 
-HeavenDB ships with **one integration test** covering 272 SQL commands across 9 tables:
+HeavenDB ships with an integration test covering **272 SQL commands** across 9 tables:
 
 ```bash
 heavendb run test3.sql
@@ -515,10 +586,6 @@ Script complete!
   Errors: 10  (all expected DROP TABLE on first run)
 ========================================
 ```
-
-### Unit Tests
-
-> 🚧 **Not yet implemented.** Unit tests for `hashmap.c`, `btree.c`, `wal.c`, and `buffer.c` are on the roadmap.
 
 ### CI / CD
 
@@ -543,19 +610,32 @@ HeavenDB/
 │   ├── auth_storage.c/h    # Persistent user storage
 │   ├── permissions.c/h     # GRANT / REVOKE system
 │   ├── replication.c/h     # Replication (stubbed)
-│   ├── tcp_server.c/h      # TCP server
-│   ├── http_server.c/h     # HTTP server
-│   └── websocket.c/h       # WebSocket support
+│   ├── tcp_server.c/h      # TCP server (Windows-only)
+│   ├── http_server.c/h     # HTTP server (Windows-only)
+│   └── websocket.c/h       # WebSocket support (Windows-only)
 │
 ├── dashboard/
 │   ├── index.html          # Web dashboard UI
 │   ├── style.css           # Dashboard styles
 │   └── app.js              # Dashboard logic
 │
+├── tests/
+│   └── test_hashmap.c      # 11 unit tests for the hash map
+│
 ├── test3.sql               # 272-command integration test
 ├── README.md
 └── Makefile
 ```
+
+---
+
+## 🎯 Top Priorities
+
+The three biggest gaps to close (in order):
+
+1. **WAL replay on startup.** Right now, crash recovery relies on the last successful `sql_save()`. WAL is written but never replayed. Real crash recovery is the single biggest missing feature.
+2. **Real replication.** `REPLICATE TO` and `SYNC` are stubs. Real streaming master-slave replication is a significant undertaking but critical for production use.
+3. **GitHub Actions CI.** Runs the unit tests and integration tests on every push. Takes 30 minutes to set up and gives instant credibility.
 
 ---
 
@@ -572,6 +652,7 @@ HeavenDB/
 - [x] In-session transactions with WAL
 - [x] TCP + HTTP servers with web dashboard
 - [x] **PBKDF2-HMAC-SHA256** password hashing
+- [x] **Random password on first run** (no default credentials)
 - [x] **Global write lock** for single-process safety
 - [x] User authentication with account lockout
 - [x] `GRANT` / `REVOKE` permissions
@@ -585,6 +666,8 @@ HeavenDB/
 - [x] Primary key, unique, not null, auto-increment, FK CASCADE
 - [x] `SAVEPOINT` / `RELEASE` / `ROLLBACK TO`
 - [x] `BACKUP` and `EXPLAIN`
+- [x] **Unit tests for hashmap.c** (11 passing)
+- [x] **Honest multi-scale benchmark** (100 to 1M keys)
 
 </details>
 
@@ -592,9 +675,8 @@ HeavenDB/
 <summary><b>🚧 In Progress</b></summary>
 
 - [ ] **WAL replay on startup** (real crash recovery)
-- [ ] **Random password on first run** (no default credentials)
-- [ ] Unit tests for hashmap, btree, wal, buffer
-- [ ] GitHub Actions CI
+- [ ] **GitHub Actions CI**
+- [ ] Unit tests for btree.c, wal.c, buffer.c
 - [ ] POSIX socket port (Linux/macOS networking)
 - [ ] Multi-process MVCC concurrency
 - [ ] Window functions (`ROW_NUMBER`, `RANK`)
