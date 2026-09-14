@@ -3,9 +3,23 @@
 
 # Database files
 *.hdb
+*.hdb.tmp
+*.wal
 
 # Object files
 *.o
 
 # Debug files
 *.pdb
+
+# Logs
+*.log
+
+# Scratch files
+errors.txt
+
+# Editor / OS files
+Thumbs.db
+Desktop.ini
+.vscode/
+*.swp
