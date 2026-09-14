@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MAX_TABLE_NAME 64
+
 // ==================== WAL LIFECYCLE ====================
 
 WAL *wal_create(void) {
@@ -68,9 +70,6 @@ int wal_begin(WAL *wal) {
 }
 
 // ==================== REAL-TIME WAL WRITES ====================
-// This is the fix: every INSERT is written to disk IMMEDIATELY,
-// not buffered in memory. That way, if the process crashes, the
-// WAL contains the operations and we can replay them on startup.
 
 int wal_log_insert(WAL *wal, const char *table_name, void **values, int column_count) {
     if (!wal || !wal->in_transaction) return -1;
@@ -88,7 +87,6 @@ int wal_log_insert(WAL *wal, const char *table_name, void **values, int column_c
     fwrite(&col_count, sizeof(uint32_t), 1, wal->log_fp);
     fwrite(table_name, sizeof(char), name_len, wal->log_fp);
     
-    // Write each value (as length-prefixed string)
     for (int i = 0; i < column_count; i++) {
         char *val_str = (char*)values[i];
         uint32_t val_len = (uint32_t)strlen(val_str);
@@ -139,9 +137,12 @@ int wal_commit(WAL *wal) {
         wal->log_fp = NULL;
     }
     
-    // Delete the WAL file on successful commit
-    // The data has been persisted via sql_save() in sql_commit()
-    remove(WAL_FILE);
+    // NOTE: We do NOT delete the WAL here. It stays on disk so that if the
+    // process crashes between COMMIT and sql_save() completing, we can
+    // replay the committed operations on next startup.
+    //
+    // The WAL is deleted after a successful sql_save() (see sql_commit),
+    // or by the recovery path.
     
     return 0;
 }
@@ -327,21 +328,17 @@ int wal_rollback_to_savepoint(WAL *wal, const char *name) {
 }
 
 // ==================== CRASH RECOVERY ====================
-// Called on startup. If a WAL file exists:
-//   - If it has a COMMIT marker, the transaction was committed.
-//     But we can't replay because values would need full type info.
-//     In practice, the main .hdb file already has the committed data.
-//   - If no COMMIT marker, the transaction was interrupted.
-//     Discard the WAL file.
 
-int wal_recover(void) {
+static WALEntry *pending_replay_head = NULL;
+static WALEntry *pending_replay_current = NULL;
+
+int wal_recover_check(void) {
     FILE *fp = fopen(WAL_FILE, "rb");
     if (!fp) {
-        // No WAL file — clean shutdown
-        return 0;
+        return 0;  // No WAL — clean shutdown
     }
     
-    // Check for COMMIT marker
+    // First pass: check for COMMIT marker
     int has_commit = 0;
     int insert_count = 0;
     
@@ -357,45 +354,117 @@ int wal_recover(void) {
             has_commit = 1;
             break;
         }
-        
-        if (type == WAL_BEGIN) {
-            continue;
-        }
-        
         if (type == WAL_INSERT) {
+            insert_count++;
             uint32_t name_len, col_count;
             if (fread(&name_len, sizeof(uint32_t), 1, fp) != 1) break;
             if (fread(&col_count, sizeof(uint32_t), 1, fp) != 1) break;
-            
-            // Skip table name
-            char *table_name = (char*)malloc(name_len + 1);
-            if (fread(table_name, sizeof(char), name_len, fp) != name_len) {
-                free(table_name);
-                break;
-            }
-            free(table_name);
-            
-            // Skip values
+            fseek(fp, name_len, SEEK_CUR);
             for (uint32_t i = 0; i < col_count; i++) {
                 uint32_t val_len;
                 if (fread(&val_len, sizeof(uint32_t), 1, fp) != 1) break;
                 fseek(fp, val_len, SEEK_CUR);
             }
-            
-            insert_count++;
         }
     }
     
-    fclose(fp);
-    remove(WAL_FILE);
+    if (!has_commit) {
+        fclose(fp);
+        remove(WAL_FILE);
+        if (insert_count > 0) {
+            printf("WAL Recovery: Found interrupted transaction (%d inserts) -- DISCARDED\n",
+                   insert_count);
+        }
+        return 0;
+    }
     
-    if (has_commit) {
-        printf("WAL Recovery: Found committed transaction (%d inserts) — data already in main DB\n",
-               insert_count);
-    } else if (insert_count > 0) {
-        printf("WAL Recovery: Found interrupted transaction (%d inserts) — DISCARDED\n",
+    // Second pass: parse all INSERT entries into memory
+    fseek(fp, 0, SEEK_SET);
+    WALEntry *head = NULL;
+    WALEntry *tail = NULL;
+    
+    while (1) {
+        uint32_t magic;
+        if (fread(&magic, sizeof(uint32_t), 1, fp) != 1) break;
+        if (magic != WAL_MAGIC) break;
+        
+        uint32_t type;
+        if (fread(&type, sizeof(uint32_t), 1, fp) != 1) break;
+        
+        if (type == WAL_COMMIT) break;
+        if (type != WAL_INSERT) continue;
+        
+        uint32_t name_len, col_count;
+        if (fread(&name_len, sizeof(uint32_t), 1, fp) != 1) break;
+        if (fread(&col_count, sizeof(uint32_t), 1, fp) != 1) break;
+        
+        WALEntry *entry = (WALEntry*)malloc(sizeof(WALEntry));
+        entry->type = WAL_INSERT;
+        entry->table_name = (char*)malloc(name_len + 1);
+        if (fread(entry->table_name, sizeof(char), name_len, fp) != name_len) {
+            free(entry->table_name);
+            free(entry);
+            break;
+        }
+        entry->table_name[name_len] = '\0';
+        
+        entry->column_count = (int)col_count;
+        entry->values = (void**)malloc(col_count * sizeof(void*));
+        
+        for (uint32_t i = 0; i < col_count; i++) {
+            uint32_t val_len;
+            if (fread(&val_len, sizeof(uint32_t), 1, fp) != 1) break;
+            char *val = (char*)malloc(val_len + 1);
+            if (fread(val, sizeof(char), val_len, fp) != val_len) {
+                free(val);
+                break;
+            }
+            val[val_len] = '\0';
+            entry->values[i] = val;
+        }
+        
+        entry->next = NULL;
+        if (tail) tail->next = entry;
+        else head = entry;
+        tail = entry;
+    }
+    
+    fclose(fp);
+    
+    pending_replay_head = head;
+    pending_replay_current = head;
+    
+    if (insert_count > 0) {
+        printf("WAL Recovery: Found committed transaction (%d inserts) -- REPLAYING\n",
                insert_count);
     }
     
-    return insert_count;
+    return 1;
+}
+
+WALEntry *wal_get_next_pending(void) {
+    if (!pending_replay_current) return NULL;
+    WALEntry *entry = pending_replay_current;
+    pending_replay_current = pending_replay_current->next;
+    return entry;
+}
+
+void wal_recover_done(void) {
+    WALEntry *current = pending_replay_head;
+    while (current) {
+        WALEntry *next = current->next;
+        free(current->table_name);
+        if (current->values) {
+            for (int i = 0; i < current->column_count; i++) {
+                free(current->values[i]);
+            }
+            free(current->values);
+        }
+        free(current);
+        current = next;
+    }
+    pending_replay_head = NULL;
+    pending_replay_current = NULL;
+    
+    remove(WAL_FILE);
 }

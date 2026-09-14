@@ -433,6 +433,13 @@ int sql_commit(void) {
     int result = wal_commit(active_wal);
     wal_destroy(active_wal);
     active_wal = NULL;
+    
+    if (result == 0) {
+        if (sql_save() == 0) {
+            remove(WAL_FILE);
+        }
+    }
+    
     return result;
 }
 
@@ -2841,6 +2848,85 @@ static int handle_sync(TokenList *tokens) {
     return 0;
 }
 
+void sql_recover_wal(void) {
+    if (wal_recover_check() != 1) {
+        return;
+    }
+    
+    WALEntry *entry;
+    int replayed = 0;
+    int errors = 0;
+    
+    while ((entry = wal_get_next_pending()) != NULL) {
+        Table *table = find_table(entry->table_name);
+        if (!table) {
+            errors++;
+            continue;
+        }
+        
+        void **typed_values = (void**)malloc(table->column_count * sizeof(void*));
+        if (!typed_values) {
+            errors++;
+            continue;
+        }
+        
+        int valid = 1;
+        for (int i = 0; i < table->column_count; i++) {
+            if (i >= entry->column_count) { valid = 0; break; }
+            
+            char *str = (char*)entry->values[i];
+            switch (table->columns[i].type) {
+                case TYPE_INTEGER:
+                case TYPE_BOOLEAN: {
+                    int *val = (int*)malloc(sizeof(int));
+                    *val = atoi(str);
+                    typed_values[i] = val;
+                    break;
+                }
+                case TYPE_FLOAT: {
+                    double *val = (double*)malloc(sizeof(double));
+                    *val = atof(str);
+                    typed_values[i] = val;
+                    break;
+                }
+                case TYPE_TEXT:
+                case TYPE_UUID:
+                case TYPE_JSON:
+                case TYPE_DATE:
+                case TYPE_TIMESTAMP: {
+                    char *copy = (char*)malloc(strlen(str) + 1);
+                    strcpy(copy, str);
+                    typed_values[i] = copy;
+                    break;
+                }
+            }
+        }
+        
+        if (valid) {
+            if (table_insert(table, typed_values) == 0) {
+                replayed++;
+            } else {
+                errors++;
+            }
+        }
+        
+        for (int i = 0; i < table->column_count; i++) {
+            free(typed_values[i]);
+        }
+        free(typed_values);
+    }
+    
+    if (replayed > 0) {
+        printf("WAL Recovery: Replayed %d operations\n", replayed);
+        sql_save();
+    }
+    if (errors > 0) {
+        printf("WAL Recovery: %d operations could not be replayed\n", errors);
+    }
+    
+    wal_recover_done();
+}
+
 // ==================== INIT/SHUTDOWN ====================
 
 void sql_init(void) {
@@ -2849,7 +2935,7 @@ void sql_init(void) {
     foreign_key_count = 0;
     
     sql_load();
-    
+    sql_recover_wal();
     if (!auth_system) {
         FILE *check = fopen(AUTH_FILE, "rb");
         int is_first_run = (check == NULL);

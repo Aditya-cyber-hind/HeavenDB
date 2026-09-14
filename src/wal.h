@@ -33,7 +33,7 @@ typedef struct {
     int count;
     int in_transaction;
     Savepoint *savepoints;
-    FILE *log_fp;  // Persistent file handle for real-time WAL writes
+    FILE *log_fp;
 } WAL;
 
 WAL *wal_create(void);
@@ -47,8 +47,16 @@ int wal_savepoint(WAL *wal, const char *name);
 int wal_release_savepoint(WAL *wal, const char *name);
 int wal_rollback_to_savepoint(WAL *wal, const char *name);
 
-// Crash recovery: replays committed transactions from disk
-// Returns number of operations replayed, -1 on error
-int wal_recover(void);
+// Crash recovery:
+//   - Returns 1 if a committed transaction is pending replay
+//   - Returns 0 if there's nothing to replay (no WAL, or uncommitted and discarded)
+int wal_recover_check(void);
+
+// Returns the next pending INSERT entry from the WAL, or NULL if done.
+// Must be called AFTER wal_recover_check() returns 1.
+WALEntry *wal_get_next_pending(void);
+
+// Frees replay state and deletes the WAL file
+void wal_recover_done(void);
 
 #endif // HEAVENDB_WAL_H
