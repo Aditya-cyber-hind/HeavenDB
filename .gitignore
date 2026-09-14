@@ -23,3 +23,6 @@ Thumbs.db
 Desktop.ini
 .vscode/
 *.swp
+
+*.bak
+*.tmp
