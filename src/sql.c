@@ -39,6 +39,15 @@ static void generate_uuid(char *output) {
 #define SQL_FILE "heaven_sql.hdb"
 #define SQL_MAGIC 0x53514C31
 
+// ==================== TOKEN LIST (moved up) ====================
+
+typedef struct {
+    char tokens[MAX_TOKENS][MAX_TOKEN_LEN];
+    int count;
+} TokenList;
+
+// ==================== GLOBAL STATE ====================
+
 static Table *tables[MAX_TABLES];
 static int table_count = 0;
 static WAL *active_wal = NULL;
@@ -46,25 +55,6 @@ static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
 static int current_savepoint_active = 0;
 static char current_savepoint_name[64] = "";
-
-static Table *find_table(const char *name);
-static int sql_execute_inner(const char *sql);
-
-static int check_permission(const char *table_name, int perm) {
-    if (!auth_system || !perm_system) return 1;
-    if (!auth_is_logged_in(auth_system)) return 1;
-    
-    const char *user = auth_current_user(auth_system);
-    if (!user) return 1;
-    if (strcmp(user, "admin") == 0) return 1;
-    
-    if (!perm_check(perm_system, user, table_name, perm)) {
-        printf("ERROR: Permission denied for '%s' on table '%s'\n",
-               user, table_name);
-        return 0;
-    }
-    return 1;
-}
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -86,7 +76,193 @@ typedef struct {
 static ForeignKey foreign_keys[MAX_TABLES * MAX_COLUMNS];
 static int foreign_key_count = 0;
 
+// ==================== FORWARD DECLARATIONS ====================
+
 static Table *find_table(const char *name);
+static int sql_execute_inner(const char *sql);
+static void to_upper(char *str);
+static int match_row_condition(void **row, Table *table, int col_idx,
+                               const char *op, const char *value,
+                               int cond_int, double cond_float);
+static void print_row(void **row, Table *table, int *column_indices, int col_count);
+
+// ==================== PERMISSION CHECK ====================
+
+static int check_permission(const char *table_name, int perm) {
+    if (!auth_system || !perm_system) return 1;
+    if (!auth_is_logged_in(auth_system)) return 1;
+    
+    const char *user = auth_current_user(auth_system);
+    if (!user) return 1;
+    if (strcmp(user, "admin") == 0) return 1;
+    
+    if (!perm_check(perm_system, user, table_name, perm)) {
+        printf("ERROR: Permission denied for '%s' on table '%s'\n",
+               user, table_name);
+        return 0;
+    }
+    return 1;
+}
+
+// ==================== WHERE PREDICATE TREE ====================
+
+typedef struct Predicate {
+    // Leaf node (comparison): column_idx >= 0
+    // Internal node (AND/OR): column_idx == -1
+    int column_idx;
+    char op[8];
+    char value[256];
+    struct Predicate *left;
+    struct Predicate *right;
+} Predicate;
+
+static void predicate_free(Predicate *p) {
+    if (!p) return;
+    predicate_free(p->left);
+    predicate_free(p->right);
+    free(p);
+}
+
+static Predicate *predicate_new_comparison(int col_idx, const char *op, const char *value) {
+    Predicate *p = (Predicate*)malloc(sizeof(Predicate));
+    if (!p) return NULL;
+    p->column_idx = col_idx;
+    strncpy(p->op, op, sizeof(p->op) - 1);
+    p->op[sizeof(p->op) - 1] = '\0';
+    strncpy(p->value, value, sizeof(p->value) - 1);
+    p->value[sizeof(p->value) - 1] = '\0';
+    p->left = NULL;
+    p->right = NULL;
+    return p;
+}
+
+static Predicate *predicate_new_logical(const char *op, Predicate *left, Predicate *right) {
+    Predicate *p = (Predicate*)malloc(sizeof(Predicate));
+    if (!p) return NULL;
+    p->column_idx = -1;
+    strncpy(p->op, op, sizeof(p->op) - 1);
+    p->op[sizeof(p->op) - 1] = '\0';
+    p->value[0] = '\0';
+    p->left = left;
+    p->right = right;
+    return p;
+}
+
+static int predicate_eval(Predicate *p, void **row, Table *table) {
+    if (!p) return 0;
+    
+    // Leaf node: comparison
+    if (p->column_idx >= 0) {
+        int cond_int = atoi(p->value);
+        double cond_float = atof(p->value);
+        
+        char upper[256];
+        strncpy(upper, p->value, sizeof(upper) - 1);
+        upper[sizeof(upper) - 1] = '\0';
+        to_upper(upper);
+        if (strcmp(upper, "TRUE") == 0) cond_int = 1;
+        else if (strcmp(upper, "FALSE") == 0) cond_int = 0;
+        
+        return match_row_condition(row, table, p->column_idx,
+                                   p->op, p->value, cond_int, cond_float);
+    }
+    
+    // Internal node: AND / OR
+    int l = predicate_eval(p->left, row, table);
+    
+    // Short-circuit evaluation
+    if (strcmp(p->op, "AND") == 0) {
+        if (!l) return 0;
+        return predicate_eval(p->right, row, table);
+    }
+    if (strcmp(p->op, "OR") == 0) {
+        if (l) return 1;
+        return predicate_eval(p->right, row, table);
+    }
+    return 0;
+}
+
+// Grammar (AND has higher precedence than OR):
+//   or_expr  := and_expr (OR and_expr)*
+//   and_expr := primary (AND primary)*
+//   primary  := '(' or_expr ')' | comparison
+static Predicate *parse_primary(TokenList *tokens, int *pos, int end, Table *table);
+static Predicate *parse_and(TokenList *tokens, int *pos, int end, Table *table);
+static Predicate *parse_or(TokenList *tokens, int *pos, int end, Table *table);
+
+static Predicate *parse_primary(TokenList *tokens, int *pos, int end, Table *table) {
+    if (*pos >= end) return NULL;
+    
+    // Parenthesized expression
+    if (strcmp(tokens->tokens[*pos], "(") == 0) {
+        (*pos)++;
+        Predicate *inner = parse_or(tokens, pos, end, table);
+        if (*pos < end && strcmp(tokens->tokens[*pos], ")") == 0) {
+            (*pos)++;
+        }
+        return inner;
+    }
+    
+    // Comparison: column op value
+    if (*pos + 2 >= end) return NULL;
+    
+    char col_name[64];
+    strncpy(col_name, tokens->tokens[*pos], sizeof(col_name) - 1);
+    col_name[sizeof(col_name) - 1] = '\0';
+    
+    char op[8];
+    strncpy(op, tokens->tokens[*pos + 1], sizeof(op) - 1);
+    op[sizeof(op) - 1] = '\0';
+    
+    char value[256];
+    strncpy(value, tokens->tokens[*pos + 2], sizeof(value) - 1);
+    value[sizeof(value) - 1] = '\0';
+    
+    int col_idx = table_get_column_index(table, col_name);
+    if (col_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", col_name);
+        return NULL;
+    }
+    
+    *pos += 3;
+    return predicate_new_comparison(col_idx, op, value);
+}
+
+static Predicate *parse_and(TokenList *tokens, int *pos, int end, Table *table) {
+    Predicate *left = parse_primary(tokens, pos, end, table);
+    if (!left) return NULL;
+    
+    while (*pos < end && strcmp(tokens->tokens[*pos], "AND") == 0) {
+        (*pos)++;
+        Predicate *right = parse_primary(tokens, pos, end, table);
+        if (!right) {
+            predicate_free(left);
+            return NULL;
+        }
+        left = predicate_new_logical("AND", left, right);
+    }
+    return left;
+}
+
+static Predicate *parse_or(TokenList *tokens, int *pos, int end, Table *table) {
+    Predicate *left = parse_and(tokens, pos, end, table);
+    if (!left) return NULL;
+    
+    while (*pos < end && strcmp(tokens->tokens[*pos], "OR") == 0) {
+        (*pos)++;
+        Predicate *right = parse_and(tokens, pos, end, table);
+        if (!right) {
+            predicate_free(left);
+            return NULL;
+        }
+        left = predicate_new_logical("OR", left, right);
+    }
+    return left;
+}
+
+// ==================== (rest of the file continues below) ====================
+// The existing print_table, match_row_condition, print_row, handle_* functions,
+// and sql_execute_inner / sql_execute wrapper follow unchanged.
 
 // ==================== PERSISTENCE ====================
 int sql_save(void) {
@@ -475,11 +651,6 @@ int sql_rollback(void) {
 }
 
 // ==================== TOKENIZER ====================
-
-typedef struct {
-    char tokens[MAX_TOKENS][MAX_TOKEN_LEN];
-    int count;
-} TokenList;
 
 static void tokenize(const char *sql, TokenList *list) {
     list->count = 0;
@@ -2107,61 +2278,21 @@ static int handle_select(TokenList *tokens) {
         }
     }
     
+    // No WHERE clause — print all
     if (from_idx + 2 >= tokens->count || strcmp(tokens->tokens[from_idx + 2], "WHERE") != 0) {
         print_table(table, column_indices, col_count);
         return 0;
     }
     
-    if (from_idx + 5 >= tokens->count) {
+    // Parse the predicate tree from the tokens after WHERE
+    int pos = from_idx + 3;
+    Predicate *pred = parse_or(tokens, &pos, tokens->count, table);
+    if (!pred) {
         printf("ERROR: Malformed WHERE clause\n");
         return -1;
     }
     
-    char col_name[64];
-    char op[8];
-    char value[256];
-    
-    strncpy(col_name, tokens->tokens[from_idx + 3], sizeof(col_name) - 1);
-    col_name[sizeof(col_name) - 1] = '\0';
-    strncpy(op, tokens->tokens[from_idx + 4], sizeof(op) - 1);
-    op[sizeof(op) - 1] = '\0';
-    strncpy(value, tokens->tokens[from_idx + 5], sizeof(value) - 1);
-    value[sizeof(value) - 1] = '\0';
-    
-    int col_idx = table_get_column_index(table, col_name);
-    if (col_idx == -1) {
-        printf("ERROR: Column '%s' not found\n", col_name);
-        return -1;
-    }
-    
-    char logic[8] = "";
-    int col2_idx = -1;
-    char op2[8] = "";
-    char value2[256] = "";
-    
-    if (from_idx + 6 < tokens->count) {
-        char maybe_logic[MAX_TOKEN_LEN];
-        strncpy(maybe_logic, tokens->tokens[from_idx + 6], sizeof(maybe_logic) - 1);
-        maybe_logic[sizeof(maybe_logic) - 1] = '\0';
-        to_upper(maybe_logic);
-        
-        if ((strcmp(maybe_logic, "AND") == 0 || strcmp(maybe_logic, "OR") == 0) && 
-            from_idx + 9 < tokens->count) {
-            
-            strcpy(logic, maybe_logic);
-            
-            char col2_name[64];
-            strncpy(col2_name, tokens->tokens[from_idx + 7], sizeof(col2_name) - 1);
-            col2_name[sizeof(col2_name) - 1] = '\0';
-            strncpy(op2, tokens->tokens[from_idx + 8], sizeof(op2) - 1);
-            op2[sizeof(op2) - 1] = '\0';
-            strncpy(value2, tokens->tokens[from_idx + 9], sizeof(value2) - 1);
-            value2[sizeof(value2) - 1] = '\0';
-            
-            col2_idx = table_get_column_index(table, col2_name);
-        }
-    }
-    
+    // Print header
     for (int i = 0; i < col_count; i++) {
         printf("%-15s ", table->columns[column_indices[i]].name);
     }
@@ -2170,38 +2301,11 @@ static int handle_select(TokenList *tokens) {
     printf("\n");
     
     int match_count = 0;
-    int cond_val = atoi(value);
-    double cond_fval = atof(value);
-    int cond2_val = atoi(value2);
-    double cond2_fval = atof(value2);
-    
-    char upper_val[256];
-    strncpy(upper_val, value, sizeof(upper_val) - 1);
-    upper_val[sizeof(upper_val) - 1] = '\0';
-    to_upper(upper_val);
-    if (strcmp(upper_val, "TRUE") == 0) cond_val = 1;
-    else if (strcmp(upper_val, "FALSE") == 0) cond_val = 0;
-    
-    char upper_val2[256];
-    strncpy(upper_val2, value2, sizeof(upper_val2) - 1);
-    upper_val2[sizeof(upper_val2) - 1] = '\0';
-    to_upper(upper_val2);
-    if (strcmp(upper_val2, "TRUE") == 0) cond2_val = 1;
-    else if (strcmp(upper_val2, "FALSE") == 0) cond2_val = 0;
     
     for (size_t r = 0; r < table->row_count; r++) {
         void **row = (void**)table->rows[r];
         
-        int matches = match_row_condition(row, table, col_idx, op, value, cond_val, cond_fval);
-        
-        if (col2_idx >= 0 && strlen(logic) > 0) {
-            int matches2 = match_row_condition(row, table, col2_idx, op2, value2, cond2_val, cond2_fval);
-            
-            if (strcmp(logic, "AND") == 0) matches = matches && matches2;
-            else matches = matches || matches2;
-        }
-        
-        if (matches) {
+        if (predicate_eval(pred, row, table)) {
             print_row(row, table, column_indices, col_count);
             printf("\n");
             match_count++;
@@ -2209,6 +2313,7 @@ static int handle_select(TokenList *tokens) {
     }
     printf("(%d row%s)\n\n", match_count, match_count == 1 ? "" : "s");
     
+    predicate_free(pred);
     return 0;
 }
 

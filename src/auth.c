@@ -7,6 +7,13 @@
 #include <bcrypt.h>
 
 // ==================== SECURE RANDOM ====================
+static int constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t diff = 0;
+    for (size_t i = 0; i < len; i++) {
+        diff |= a[i] ^ b[i];
+    }
+    return diff == 0;
+}
 
 static int secure_random_bytes(uint8_t *out, size_t len) {
     return BCryptGenRandom(NULL, out, (ULONG)len,
@@ -355,40 +362,52 @@ int auth_create_user(AuthSystem *auth, const char *username, const char *passwor
 int auth_login(AuthSystem *auth, const char *username, const char *password) {
     if (!auth || !username || !password) return -1;
     
+    // Find the user
+    int user_idx = -1;
     for (int i = 0; i < auth->user_count; i++) {
         if (strcmp(auth->users[i].username, username) == 0) {
-            
-            if (auth->users[i].is_locked) {
-                printf("ERROR: Account locked. Too many failed attempts.\n");
-                return -2;
-            }
-            
-            uint8_t test_hash[HASH_SIZE];
-            pbkdf2(password, auth->users[i].salt, SALT_SIZE, PBKDF2_ITERATIONS,
-                   test_hash, HASH_SIZE);
-            
-            if (auth->users[i].is_active &&
-                memcmp(auth->users[i].password_hash, test_hash, HASH_SIZE) == 0) {
-                auth->users[i].failed_attempts = 0;
-                auth->current_user_index = i;
-                return 0;
-            } else {
-                auth->users[i].failed_attempts++;
-                
-                if (auth->users[i].failed_attempts >= MAX_LOGIN_ATTEMPTS) {
-                    auth->users[i].is_locked = 1;
-                    printf("ERROR: Account locked after %d failed attempts.\n", MAX_LOGIN_ATTEMPTS);
-                } else {
-                    printf("ERROR: Invalid password. %d attempts remaining.\n",
-                           MAX_LOGIN_ATTEMPTS - auth->users[i].failed_attempts);
-                }
-                return -1;
-            }
+            user_idx = i;
+            break;
         }
     }
     
-    printf("ERROR: User '%s' not found\n", username);
-    return -1;
+    // Always compute a PBKDF2 hash — even for non-existent users —
+    // to prevent timing-based user enumeration.
+    uint8_t test_hash[HASH_SIZE];
+    uint8_t dummy_salt[SALT_SIZE] = {0};
+    const uint8_t *salt = (user_idx >= 0) ? auth->users[user_idx].salt : dummy_salt;
+    
+    pbkdf2(password, salt, SALT_SIZE, PBKDF2_ITERATIONS, test_hash, HASH_SIZE);
+    
+    if (user_idx < 0) {
+        printf("ERROR: Invalid credentials\n");
+        return -1;
+    }
+    
+    User *u = &auth->users[user_idx];
+    
+    if (u->is_locked) {
+        printf("ERROR: Account locked. Too many failed attempts.\n");
+        return -2;
+    }
+    
+    int match = u->is_active && constant_time_compare(u->password_hash, test_hash, HASH_SIZE);
+    
+    if (match) {
+        u->failed_attempts = 0;
+        auth->current_user_index = user_idx;
+        return 0;
+    } else {
+        u->failed_attempts++;
+        
+        if (u->failed_attempts >= MAX_LOGIN_ATTEMPTS) {
+            u->is_locked = 1;
+            printf("ERROR: Account locked after %d failed attempts.\n", MAX_LOGIN_ATTEMPTS);
+        } else {
+            printf("ERROR: Invalid credentials\n");
+        }
+        return -1;
+    }
 }
 
 int auth_change_password(AuthSystem *auth, const char *new_password) {
