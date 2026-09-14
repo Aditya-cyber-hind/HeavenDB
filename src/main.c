@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <windows.h>
 #include "database.h"
 #include "hashmap.h"
 #include "sql.h"
@@ -9,6 +10,18 @@
 #include "http_server.h"
 
 #define DB_FILE "heaven.hdb"
+
+static volatile int g_shutdown_requested = 0;
+
+static BOOL WINAPI ctrl_handler(DWORD type) {
+    if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT) {
+        g_shutdown_requested = 1;
+        sql_shutdown();
+        fprintf(stderr, "\nShutdown complete.\n");
+        ExitProcess(0);
+    }
+    return FALSE;
+}
 
 static void print_usage(void) {
     printf("HeavenDB - A High-Performance Database Engine\n");
@@ -186,6 +199,8 @@ static void run_sql_file(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
+    SetConsoleCtrlHandler(ctrl_handler, TRUE);
+    
     if (argc < 2) {
         print_usage();
         fflush(stdout);

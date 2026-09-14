@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <limits.h>
-#include <stdint.h>
 
 typedef struct {
     unsigned int state[5];
@@ -147,7 +145,7 @@ int ws_handshake(SOCKET client_socket, const char *request) {
     
     char key[256];
     int key_len = key_end - key_start;
-    if (key_len <= 0 || key_len >= 256) return -1;
+    if (key_len >= 256) return -1;
     
     strncpy(key, key_start, key_len);
     key[key_len] = '\0';
@@ -192,12 +190,10 @@ int ws_parse_frame(const char *buffer, int buffer_len, char *payload, int payloa
         offset = 4;
     } else if (payload_len == 127) {
         if (buffer_len < 10) return -1;
-        uint64_t big_len = 0;
+        payload_len = 0;
         for (int i = 0; i < 8; i++) {
-            big_len = (big_len << 8) | (unsigned char)buffer[2 + i];
+            payload_len = (payload_len << 8) | (unsigned char)buffer[2 + i];
         }
-        if (big_len > INT_MAX) return -1;
-        payload_len = (int)big_len;
         offset = 10;
     }
     
@@ -224,12 +220,6 @@ int ws_parse_frame(const char *buffer, int buffer_len, char *payload, int payloa
 int ws_create_frame(const char *payload, int payload_len, char *frame, int frame_size) {
     int offset = 0;
     
-    // Check upfront that the frame will fit
-    int needed = 2 + payload_len;
-    if (payload_len >= 126) needed += 2;
-    if (payload_len >= 65536) needed += 6;  // 126 case is 2 bytes; 127 case is 8 bytes total; net +6 vs 2
-    if (needed > frame_size) return -1;
-    
     frame[offset++] = 0x81;
     
     if (payload_len < 126) {
@@ -244,6 +234,8 @@ int ws_create_frame(const char *payload, int payload_len, char *frame, int frame
             frame[offset++] = (payload_len >> (i * 8)) & 0xFF;
         }
     }
+    
+    if (offset + payload_len >= frame_size) return -1;
     
     memcpy(frame + offset, payload, payload_len);
     offset += payload_len;

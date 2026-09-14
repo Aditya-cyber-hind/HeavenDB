@@ -7,10 +7,12 @@ Table *table_create(const char *name) {
     Table *table = (Table*)malloc(sizeof(Table));
     if (!table) return NULL;
     
-    memset(table, 0, sizeof(Table));
-    
     strncpy(table->name, name, MAX_TABLE_NAME - 1);
     table->name[MAX_TABLE_NAME - 1] = '\0';
+    table->column_count = 0;
+    table->rows = NULL;
+    table->row_count = 0;
+    table->row_capacity = 0;
     
     for (int i = 0; i < MAX_COLUMNS; i++) {
         table->columns[i].index = NULL;
@@ -25,14 +27,7 @@ Table *table_create(const char *name) {
 }
 
 int table_add_column(Table *table, const char *name, ColumnType type) {
-    if (!table || !name) return -1;
-    if (table->column_count >= MAX_COLUMNS) return -1;
-    
-    // Reject duplicate column names
-    if (table_get_column_index(table, name) != -1) {
-        printf("ERROR: Column '%s' already exists\n", name);
-        return -1;
-    }
+    if (!table || table->column_count >= MAX_COLUMNS) return -1;
     
     Column *col = &table->columns[table->column_count];
     strncpy(col->name, name, 63);
@@ -71,7 +66,6 @@ int table_insert(Table *table, void **values) {
         table->row_capacity = new_capacity;
     }
     
-    // Allocate and deep-copy the row
     void **row = (void**)malloc(table->column_count * sizeof(void*));
     if (!row) return -1;
     
@@ -80,11 +74,6 @@ int table_insert(Table *table, void **values) {
             case TYPE_INTEGER:
             case TYPE_BOOLEAN: {
                 int *val = (int*)malloc(sizeof(int));
-                if (!val) {
-                    for (int j = 0; j < i; j++) free(row[j]);
-                    free(row);
-                    return -1;
-                }
                 *val = *(int*)values[i];
                 row[i] = val;
                 break;
@@ -96,22 +85,12 @@ int table_insert(Table *table, void **values) {
             case TYPE_TIMESTAMP: {
                 char *str = (char*)values[i];
                 char *copy = (char*)malloc(strlen(str) + 1);
-                if (!copy) {
-                    for (int j = 0; j < i; j++) free(row[j]);
-                    free(row);
-                    return -1;
-                }
                 strcpy(copy, str);
                 row[i] = copy;
                 break;
             }
             case TYPE_FLOAT: {
                 double *val = (double*)malloc(sizeof(double));
-                if (!val) {
-                    for (int j = 0; j < i; j++) free(row[j]);
-                    free(row);
-                    return -1;
-                }
                 *val = *(double*)values[i];
                 row[i] = val;
                 break;
@@ -122,7 +101,7 @@ int table_insert(Table *table, void **values) {
     // Check NOT NULL constraints
     for (int i = 0; i < table->column_count; i++) {
         if (table->columns[i].is_not_null) {
-            if (table->columns[i].type == TYPE_TEXT ||
+            if (table->columns[i].type == TYPE_TEXT || 
                 table->columns[i].type == TYPE_UUID ||
                 table->columns[i].type == TYPE_JSON ||
                 table->columns[i].type == TYPE_DATE ||
@@ -138,43 +117,27 @@ int table_insert(Table *table, void **values) {
         }
     }
     
-    // Check UNIQUE constraints (excluding indexed columns, handled below)
+    // Check UNIQUE constraints
     for (int i = 0; i < table->column_count; i++) {
-        if (table->columns[i].is_unique && table->columns[i].index == NULL) {
+        if (table->columns[i].is_unique) {
             for (size_t r = 0; r < table->row_count; r++) {
                 void **existing = (void**)table->rows[r];
                 if (table->columns[i].type == TYPE_INTEGER ||
                     table->columns[i].type == TYPE_BOOLEAN) {
                     if (*(int*)existing[i] == *(int*)row[i]) {
-                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n",
-                               table->columns[i].name);
+                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
                         for (int j = 0; j < table->column_count; j++) free(row[j]);
                         free(row);
                         return -1;
                     }
                 } else {
                     if (strcmp((char*)existing[i], (char*)row[i]) == 0) {
-                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n",
-                               table->columns[i].name);
+                        printf("ERROR: Duplicate value for UNIQUE column '%s'\n", table->columns[i].name);
                         for (int j = 0; j < table->column_count; j++) free(row[j]);
                         free(row);
                         return -1;
                     }
                 }
-            }
-        }
-    }
-    
-    // Pass 1: check all indexed columns for duplicate keys BEFORE modifying anything
-    for (int i = 0; i < table->column_count; i++) {
-        if (table->columns[i].type == TYPE_INTEGER && table->columns[i].index) {
-            int key = *(int*)row[i];
-            if (btree_search(table->columns[i].index, key) != NULL) {
-                printf("ERROR: Duplicate value %d in indexed column '%s'\n",
-                       key, table->columns[i].name);
-                for (int j = 0; j < table->column_count; j++) free(row[j]);
-                free(row);
-                return -1;
             }
         }
     }
@@ -189,11 +152,10 @@ int table_insert(Table *table, void **values) {
         }
     }
     
-    // Pass 2: insert into the table
     table->rows[table->row_count] = row;
     table->row_count++;
     
-    // Pass 3: insert into B-Trees. Cannot fail now, since Pass 1 checked.
+    // Add to B-Tree indexes
     for (int i = 0; i < table->column_count; i++) {
         if (table->columns[i].type == TYPE_INTEGER && table->columns[i].index) {
             int key = *(int*)row[i];
@@ -220,7 +182,6 @@ void table_destroy(Table *table) {
     
     for (size_t i = 0; i < table->row_count; i++) {
         void **row = (void**)table->rows[i];
-        if (!row) continue;
         for (int j = 0; j < table->column_count; j++) {
             free(row[j]);
         }

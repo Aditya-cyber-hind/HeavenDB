@@ -99,6 +99,12 @@ static void insert_non_full(BTreeNode *node, int key, void *value) {
 int btree_insert(BTree *tree, int key, void *value) {
     if (!tree) return -1;
     
+    // Reject duplicate keys. This makes the tree a proper unique index,
+    // which is what PRIMARY KEY and UNIQUE columns need.
+    if (btree_search(tree, key) != NULL) {
+        return -1;
+    }
+    
     BTreeNode *root = tree->root;
     
     // If root is full, split it
@@ -108,7 +114,6 @@ int btree_insert(BTree *tree, int key, void *value) {
         split_child(new_root, 0, root);
         tree->root = new_root;
         
-        // Insert into the appropriate child
         int i = 0;
         if (key > new_root->keys[0]) {
             i = 1;

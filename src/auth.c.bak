@@ -3,15 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <windows.h>
-#include <bcrypt.h>
-
-// ==================== SECURE RANDOM ====================
-
-static int secure_random_bytes(uint8_t *out, size_t len) {
-    return BCryptGenRandom(NULL, out, (ULONG)len,
-                           BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0;
-}
 
 // ==================== SHA-256 IMPLEMENTATION ====================
 
@@ -159,12 +150,6 @@ static void pbkdf2(const char *password, const uint8_t *salt, size_t salt_len,
     uint8_t salt_block[64];
     uint32_t counter = 1;
     
-    if (salt_len + 4 > sizeof(salt_block)) {
-        // Refuse to overflow; should never happen with SALT_SIZE = 16
-        memset(output, 0, output_len);
-        return;
-    }
-    
     memcpy(salt_block, salt, salt_len);
     salt_block[salt_len] = (counter >> 24) & 0xff;
     salt_block[salt_len + 1] = (counter >> 16) & 0xff;
@@ -182,12 +167,16 @@ static void pbkdf2(const char *password, const uint8_t *salt, size_t salt_len,
     memcpy(output, block, (output_len < 32) ? output_len : 32);
 }
 
-// ==================== SALT AND PASSWORD GENERATION ====================
+// ==================== CRYPTO RANDOM ====================
 
 static void generate_salt(uint8_t *salt, size_t len) {
-    if (!secure_random_bytes(salt, len)) {
-        fprintf(stderr, "FATAL: no secure RNG available for salt generation\n");
-        abort();
+    static int seeded = 0;
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+    for (size_t i = 0; i < len; i++) {
+        salt[i] = (uint8_t)(rand() & 0xff);
     }
 }
 
@@ -195,34 +184,22 @@ void auth_generate_random_password(char *output, int length) {
     static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
     int charset_len = sizeof(charset) - 1;
     
-    if (length < 5) {
-        if (length > 0) output[0] = '\0';
-        return;
+    static int seeded = 0;
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
     }
     
-    uint8_t *rnd = (uint8_t*)malloc(length);
-    if (!rnd) {
-        output[0] = '\0';
-        return;
-    }
-    if (!secure_random_bytes(rnd, length)) {
-        free(rnd);
-        fprintf(stderr, "FATAL: no secure RNG available for password generation\n");
-        abort();
-    }
-    
-    // Ensure at least one uppercase, lowercase, digit, and symbol
-    output[0] = 'A' + (rnd[0] % 26);
-    output[1] = 'a' + (rnd[1] % 26);
-    output[2] = '0' + (rnd[2] % 10);
-    output[3] = charset[52 + (rnd[3] % 10)];
+    output[0] = 'A' + (rand() % 26);
+    output[1] = 'a' + (rand() % 26);
+    output[2] = '0' + (rand() % 10);
+    output[3] = charset[52 + (rand() % 10)];
     
     for (int i = 4; i < length - 1; i++) {
-        output[i] = charset[rnd[i] % charset_len];
+        output[i] = charset[rand() % charset_len];
     }
     
     output[length - 1] = '\0';
-    free(rnd);
 }
 
 // ==================== AUTH IMPLEMENTATION ====================
@@ -423,8 +400,5 @@ const char *auth_current_user(AuthSystem *auth) {
 }
 
 void auth_destroy(AuthSystem *auth) {
-    if (auth) {
-        memset(auth, 0, sizeof(AuthSystem));
-        free(auth);
-    }
+    if (auth) free(auth);
 }

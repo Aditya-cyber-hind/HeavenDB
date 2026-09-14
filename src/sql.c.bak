@@ -10,16 +10,11 @@
 #include "auth.h"
 #include "auth_storage.h"
 #include "permissions.h"
-#include <windows.h>
-#include <bcrypt.h>
-
-static SRWLOCK sql_global_lock = SRWLOCK_INIT;
 
 static void generate_uuid(char *output) {
     unsigned char bytes[16];
-    if (BCryptGenRandom(NULL, bytes, 16, BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
-        strcpy(output, "00000000-0000-4000-8000-000000000000");
-        return;
+    for (int i = 0; i < 16; i++) {
+        bytes[i] = (unsigned char)(rand() % 256);
     }
     bytes[6] = (bytes[6] & 0x0F) | 0x40;
     bytes[8] = (bytes[8] & 0x3F) | 0x80;
@@ -44,27 +39,9 @@ static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
+// Savepoint tracking (Session 2)
 static int current_savepoint_active = 0;
 static char current_savepoint_name[64] = "";
-
-static Table *find_table(const char *name);
-static int sql_execute_inner(const char *sql);
-
-static int check_permission(const char *table_name, int perm) {
-    if (!auth_system || !perm_system) return 1;
-    if (!auth_is_logged_in(auth_system)) return 1;
-    
-    const char *user = auth_current_user(auth_system);
-    if (!user) return 1;
-    if (strcmp(user, "admin") == 0) return 1;
-    
-    if (!perm_check(perm_system, user, table_name, perm)) {
-        printf("ERROR: Permission denied for '%s' on table '%s'\n",
-               user, table_name);
-        return 0;
-    }
-    return 1;
-}
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -1512,6 +1489,8 @@ static int handle_drop_table(TokenList *tokens) {
     int if_exists = 0;
     int name_idx = 2;
     
+    // DROP TABLE IF EXISTS users
+    // tokens[0]=DROP, [1]=TABLE, [2]=IF, [3]=EXISTS, [4]=users
     if (tokens->count >= 5) {
         char second[MAX_TOKEN_LEN];
         char third[MAX_TOKEN_LEN];
@@ -1530,8 +1509,6 @@ static int handle_drop_table(TokenList *tokens) {
     
     char table_name[MAX_TABLE_NAME];
     strcpy(table_name, tokens->tokens[name_idx]);
-    
-    if (!check_permission(table_name, PERM_DELETE)) return -1;
     
     for (int i = 0; i < table_count; i++) {
         if (strcmp(tables[i]->name, table_name) == 0) {
@@ -1576,8 +1553,6 @@ static int handle_alter_table(TokenList *tokens) {
         return -1;
     }
     
-    if (!check_permission(table_name, PERM_UPDATE)) return -1;
-    
     if (strcmp(tokens->tokens[3], "ADD") == 0) {
         if (tokens->count < 6) return -1;
         
@@ -1618,15 +1593,17 @@ static int handle_alter_table(TokenList *tokens) {
         
         int new_col_idx = table->column_count - 1;
         
+        // Grow each existing row to include the new column
         for (size_t r = 0; r < table->row_count; r++) {
             void **old_row = (void**)table->rows[r];
             void **new_row = (void**)malloc(table->column_count * sizeof(void*));
-            if (!new_row) return -1;
             
+            // Copy old values
             for (int c = 0; c < new_col_idx; c++) {
                 new_row[c] = old_row[c];
             }
             
+            // Add default value for the new column
             switch (type) {
                 case TYPE_INTEGER:
                 case TYPE_BOOLEAN: {
@@ -1643,9 +1620,7 @@ static int handle_alter_table(TokenList *tokens) {
                 }
                 case TYPE_TEXT:
                 case TYPE_UUID:
-                case TYPE_JSON:
-                case TYPE_DATE:
-                case TYPE_TIMESTAMP: {
+                case TYPE_JSON: {
                     char *val = (char*)malloc(1);
                     val[0] = '\0';
                     new_row[new_col_idx] = val;
@@ -1672,6 +1647,7 @@ static int handle_alter_table(TokenList *tokens) {
             return -1;
         }
         
+        // Free the values in this column and shift remaining columns
         for (size_t r = 0; r < table->row_count; r++) {
             void **old_row = (void**)table->rows[r];
             
@@ -1685,6 +1661,7 @@ static int handle_alter_table(TokenList *tokens) {
             table->rows[r] = new_row;
         }
         
+        // Shift column definitions
         for (int c = col_idx; c < table->column_count - 1; c++) {
             table->columns[c] = table->columns[c + 1];
         }
@@ -1714,8 +1691,6 @@ static int handle_insert(TokenList *tokens) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
-    
-    if (!check_permission(table_name, PERM_INSERT)) return -1;
     
     int i = 5;
     
@@ -2084,8 +2059,6 @@ static int handle_select(TokenList *tokens) {
         return -1;
     }
     
-    if (!check_permission(table_name, PERM_SELECT)) return -1;
-    
     int column_indices[MAX_COLUMNS];
     int col_count = 0;
     
@@ -2112,6 +2085,7 @@ static int handle_select(TokenList *tokens) {
         return 0;
     }
     
+    // Bounds check for WHERE <col> <op> <value>
     if (from_idx + 5 >= tokens->count) {
         printf("ERROR: Malformed WHERE clause\n");
         return -1;
@@ -2215,6 +2189,8 @@ static int handle_select(TokenList *tokens) {
 // ==================== UPDATE ====================
 
 static int handle_update(TokenList *tokens) {
+    // UPDATE <table> SET <col> = <value> WHERE <col> <op> <value>
+    // tokens:      0      1    2   3   4    5     6     7    8    9
     if (tokens->count < 10) {
         printf("ERROR: UPDATE requires a WHERE clause\n");
         return -1;
@@ -2230,8 +2206,7 @@ static int handle_update(TokenList *tokens) {
         return -1;
     }
     
-    if (!check_permission(table_name, PERM_UPDATE)) return -1;
-    
+    // Verify SET keyword
     char set_kw[MAX_TOKEN_LEN];
     strncpy(set_kw, tokens->tokens[2], sizeof(set_kw) - 1);
     set_kw[sizeof(set_kw) - 1] = '\0';
@@ -2253,6 +2228,7 @@ static int handle_update(TokenList *tokens) {
         return -1;
     }
     
+    // Verify WHERE keyword
     char where_kw[MAX_TOKEN_LEN];
     strncpy(where_kw, tokens->tokens[6], sizeof(where_kw) - 1);
     where_kw[sizeof(where_kw) - 1] = '\0';
@@ -2298,6 +2274,7 @@ static int handle_update(TokenList *tokens) {
             continue;
         }
         
+        // Apply the SET, dispatching on the target column's type
         switch (table->columns[set_idx].type) {
             case TYPE_INTEGER:
             case TYPE_BOOLEAN:
@@ -2330,6 +2307,8 @@ static int handle_update(TokenList *tokens) {
 // ==================== DELETE ====================
 
 static int handle_delete(TokenList *tokens) {
+    // DELETE FROM <table> WHERE <col> <op> <value>
+    // tokens:  0      1    2      3     4    5     6
     if (tokens->count < 7) {
         printf("ERROR: DELETE requires a WHERE clause\n");
         return -1;
@@ -2353,8 +2332,6 @@ static int handle_delete(TokenList *tokens) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
-    
-    if (!check_permission(table_name, PERM_DELETE)) return -1;
     
     char where_kw[MAX_TOKEN_LEN];
     strncpy(where_kw, tokens->tokens[3], sizeof(where_kw) - 1);
@@ -2390,16 +2367,19 @@ static int handle_delete(TokenList *tokens) {
         
         if (match_row_condition(row, table, where_idx, where_op, where_value,
                                 cond_int, cond_float)) {
+            // Free the row's cells
             for (int c = 0; c < table->column_count; c++) {
                 free(row[c]);
             }
             free(row);
             
+            // Shift remaining rows down
             for (size_t j = r; j + 1 < table->row_count; j++) {
                 table->rows[j] = table->rows[j + 1];
             }
             table->row_count--;
             deleted++;
+            // Don't advance r — the next row is now at index r
         } else {
             r++;
         }
@@ -2766,7 +2746,7 @@ static int handle_select_view(TokenList *tokens) {
     
     for (int i = 0; i < view_count; i++) {
         if (strcmp(views[i].name, view_name) == 0) {
-            sql_execute_inner(views[i].sql);
+            sql_execute(views[i].sql);
             return 0;
         }
     }
@@ -3332,8 +3312,6 @@ static int handle_truncate(TokenList *tokens) {
         return -1;
     }
     
-    if (!check_permission(table_name, PERM_DELETE)) return -1;
-    
     for (size_t i = 0; i < table->row_count; i++) {
         void **row = (void**)table->rows[i];
         for (int j = 0; j < table->column_count; j++) {
@@ -3623,7 +3601,7 @@ static int handle_cte(TokenList *tokens) {
     }
     
     printf("-- CTE '%s' executes:\n", cte_name);
-    sql_execute_inner(inner_sql);
+    sql_execute(inner_sql);
     printf("-- Main query results:\n");
     
     return 0;
@@ -4070,8 +4048,6 @@ static int handle_create_index(TokenList *tokens) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
-    
-    if (!check_permission(table_name, PERM_UPDATE)) return -1;
     
     int paren_idx = -1;
     for (int i = on_idx + 2; i < tokens->count; i++) {
@@ -5918,7 +5894,7 @@ static int handle_date_function(TokenList *tokens) {
     return -1;
 }
 
-static int sql_execute_inner(const char *sql) {
+int sql_execute(const char *sql) {
     TokenList list;
     tokenize(sql, &list);
     
@@ -6163,6 +6139,7 @@ static int sql_execute_inner(const char *sql) {
         for (int i = 0; i < list.count; i++) {
             if (strcmp(list.tokens[i], "WHERE") == 0 && i + 3 < list.count) {
                 if (strcmp(list.tokens[i + 3], "(") == 0) {
+                    // Exclude IN, ANY, ALL, SOME which have their own handlers
                     int is_own_handler = 0;
                     if (i + 2 < list.count) {
                         char op_check[MAX_TOKEN_LEN];
@@ -6413,11 +6390,4 @@ static int sql_execute_inner(const char *sql) {
     }
     
     return 0;
-}
-
-int sql_execute(const char *sql) {
-    AcquireSRWLockExclusive(&sql_global_lock);
-    int result = sql_execute_inner(sql);
-    ReleaseSRWLockExclusive(&sql_global_lock);
-    return result;
 }

@@ -26,21 +26,6 @@ static const char *get_content_type(const char *filename) {
 }
 
 static void serve_file(SOCKET client, const char *path) {
-    // Reject path traversal attempts
-    if (strstr(path, "..") != NULL ||
-        strchr(path, '\\') != NULL ||
-        strchr(path, ':') != NULL ||
-        strstr(path, "//") != NULL) {
-        char response[] = "HTTP/1.1 400 Bad Request\r\n"
-                          "Content-Type: text/plain\r\n"
-                          "Content-Length: 11\r\n"
-                          "Connection: close\r\n"
-                          "\r\n"
-                          "Bad Request";
-        send(client, response, (int)strlen(response), 0);
-        return;
-    }
-    
     char full_path[512];
     
     if (strcmp(path, "/") == 0 || strlen(path) == 0) {
@@ -86,24 +71,19 @@ static void serve_file(SOCKET client, const char *path) {
 }
 
 static void serve_query(SOCKET client, const char *query_param) {
-    // Initialize SQL engine on first use only
+    // Initialize SQL engine on first use
     if (!sql_initialized) {
         sql_init();
         sql_initialized = 1;
+    } else {
+        // Reload tables from disk to ensure we have latest data
+        sql_load();
     }
     
-    // Decode URL parameter, stopping at the end of the sql= value
     char sql[512];
     int sql_len = 0;
     
     for (int i = 0; query_param[i] && sql_len < 511; i++) {
-        // Stop at HTTP token terminators
-        if (query_param[i] == ' ' || query_param[i] == '&' ||
-            query_param[i] == '#' || query_param[i] == '\r' ||
-            query_param[i] == '\n') {
-            break;
-        }
-        
         if (query_param[i] == '%' && query_param[i+1] && query_param[i+2]) {
             char hex[3] = {query_param[i+1], query_param[i+2], '\0'};
             sql[sql_len++] = (char)strtol(hex, NULL, 16);
@@ -172,8 +152,8 @@ DWORD WINAPI http_worker(LPVOID param) {
         if (bytes_received > 0) {
             request[bytes_received] = '\0';
             
-            char method[16] = {0};
-            char path[256] = {0};
+            char method[16];
+            char path[256];
             
             sscanf(request, "%15s %255s", method, path);
             
@@ -204,9 +184,6 @@ int http_server_start(int port) {
     if (http_socket == INVALID_SOCKET) {
         return -1;
     }
-    
-    int opt = 1;
-    setsockopt(http_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
     
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;

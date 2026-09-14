@@ -7,10 +7,7 @@
 int auth_save(AuthSystem *auth) {
     if (!auth) return -1;
     
-    char temp_file[256];
-    snprintf(temp_file, sizeof(temp_file), "%s.tmp", AUTH_FILE);
-    
-    FILE *fp = fopen(temp_file, "wb");
+    FILE *fp = fopen(AUTH_FILE, "wb");
     if (!fp) return -1;
     
     uint32_t magic = AUTH_MAGIC;
@@ -35,22 +32,7 @@ int auth_save(AuthSystem *auth) {
         fwrite(&user->must_change_password, sizeof(int), 1, fp);
     }
     
-    // Detect write errors before committing
-    if (ferror(fp)) {
-        fclose(fp);
-        remove(temp_file);
-        return -1;
-    }
-    
     fclose(fp);
-    
-    // Atomic replace
-    remove(AUTH_FILE);
-    if (rename(temp_file, AUTH_FILE) != 0) {
-        remove(temp_file);
-        return -1;
-    }
-    
     return 0;
 }
 
@@ -77,40 +59,28 @@ int auth_load(AuthSystem *auth) {
         return -1;
     }
     
-    if (count > MAX_USERS) {
-        fclose(fp);
-        return -1;
-    }
-    
     auth->user_count = 0;
     
-    for (uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count && i < MAX_USERS; i++) {
         User *user = &auth->users[i];
-        memset(user, 0, sizeof(User));
         
         uint32_t name_len;
         if (fread(&name_len, sizeof(uint32_t), 1, fp) != 1) break;
-        if (name_len == 0 || name_len >= MAX_USERNAME) break;
+        if (name_len >= MAX_USERNAME) break;
         if (fread(user->username, sizeof(char), name_len, fp) != name_len) break;
         user->username[name_len] = '\0';
         
         if (fread(user->salt, sizeof(uint8_t), SALT_SIZE, fp) != SALT_SIZE) break;
         if (fread(user->password_hash, sizeof(uint8_t), HASH_SIZE, fp) != HASH_SIZE) break;
         
-        if (fread(&user->is_active, sizeof(int), 1, fp) != 1) break;
-        if (fread(&user->failed_attempts, sizeof(int), 1, fp) != 1) break;
-        if (fread(&user->is_locked, sizeof(int), 1, fp) != 1) break;
-        if (fread(&user->must_change_password, sizeof(int), 1, fp) != 1) break;
+        fread(&user->is_active, sizeof(int), 1, fp);
+        fread(&user->failed_attempts, sizeof(int), 1, fp);
+        fread(&user->is_locked, sizeof(int), 1, fp);
+        fread(&user->must_change_password, sizeof(int), 1, fp);
         
         auth->user_count++;
     }
     
     fclose(fp);
-    
-    // If we didn't read the expected count, the file is corrupt
-    if ((uint32_t)auth->user_count != count) {
-        return -1;
-    }
-    
     return 0;
 }
