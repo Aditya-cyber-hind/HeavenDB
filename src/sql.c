@@ -55,6 +55,7 @@ static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
 static int current_savepoint_active = 0;
 static char current_savepoint_name[64] = "";
+int g_require_auth = 0;   // set to 1 by main.c when running as a server
 
 typedef struct {
     char name[MAX_TABLE_NAME];
@@ -90,7 +91,14 @@ static void print_row(void **row, Table *table, int *column_indices, int col_cou
 
 static int check_permission(const char *table_name, int perm) {
     if (!auth_system || !perm_system) return 1;
-    if (!auth_is_logged_in(auth_system)) return 1;
+    
+    if (!auth_is_logged_in(auth_system)) {
+        if (g_require_auth) {
+            printf("ERROR: Authentication required\n");
+            return 0;
+        }
+        return 1;   // CLI mode: anonymous allowed
+    }
     
     const char *user = auth_current_user(auth_system);
     if (!user) return 1;
@@ -103,6 +111,7 @@ static int check_permission(const char *table_name, int perm) {
     }
     return 1;
 }
+
 
 // ==================== WHERE PREDICATE TREE ====================
 
@@ -3164,6 +3173,22 @@ void sql_init(void) {
         perm_system = perm_create();
     }
     printf("HeavenDB SQL Engine initialized.\n");
+}
+
+int sql_set_current_user(const char *username) {
+    if (!auth_system || !username) return -1;
+    
+    for (int i = 0; i < auth_system->user_count; i++) {
+        if (strcmp(auth_system->users[i].username, username) == 0) {
+            auth_system->current_user_index = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+AuthSystem *auth_get_system(void) {
+    return auth_system;
 }
 
 void sql_shutdown(void) {

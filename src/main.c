@@ -225,6 +225,9 @@ int main(int argc, char *argv[]) {
             port = atoi(argv[2]);
         }
         
+        extern int g_require_auth;
+        g_require_auth = 1;   // server mode: require authentication
+        
         sql_init();
         http_server_start(HTTP_PORT);
         tcp_server_start(port);

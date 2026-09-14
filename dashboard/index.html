@@ -13,28 +13,35 @@
             <p>Real-time database monitor</p>
         </div>
 
-        <div class="connection">
-            <input type="text" id="host" value="localhost" placeholder="Host">
-            <input type="number" id="port" value="6379" placeholder="Port">
-            <button id="connectBtn" onclick="connect()">Connect</button>
-            <span id="status" class="status-offline">Disconnected</span>
+        <div id="loginBox" class="connection">
+            <input type="text" id="loginUser" placeholder="Username" value="admin">
+            <input type="password" id="loginPass" placeholder="Password">
+            <button onclick="doLogin()">Log In</button>
+            <span id="loginStatus"></span>
         </div>
 
-        <div class="query-box">
-            <input type="text" id="query" placeholder="Type SQL query..." onkeypress="handleEnter(event)">
-            <button onclick="executeQuery()">Run</button>
-        </div>
-
-        <div class="content">
-            <div class="sidebar">
-                <h3>Tables</h3>
-                <ul id="tableList">
-                    <li>Loading...</li>
-                </ul>
+        <div id="mainBox" style="display:none;">
+            <div class="connection">
+                <span id="whoami">Not logged in</span>
+                <button onclick="doLogout()">Log Out</button>
             </div>
-            <div class="results">
-                <h3>Results</h3>
-                <pre id="output">Run a query to see results here...</pre>
+
+            <div class="query-box">
+                <input type="text" id="query" placeholder="Type SQL query..." onkeypress="handleEnter(event)">
+                <button onclick="executeQuery()">Run</button>
+            </div>
+
+            <div class="content">
+                <div class="sidebar">
+                    <h3>Tables</h3>
+                    <ul id="tableList">
+                        <li>Run SHOW TABLES to list</li>
+                    </ul>
+                </div>
+                <div class="results">
+                    <h3>Results</h3>
+                    <pre id="output">Run a query to see results here...</pre>
+                </div>
             </div>
         </div>
     </div>
