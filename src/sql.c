@@ -1113,8 +1113,36 @@ static int handle_group_by(TokenList *tokens) {
     return 0;
 }
 
-// ==================== ORDER BY ====================
+// Returns <0 if a sorts before b, 0 if equal, >0 if a sorts after b.
+// Handles all column types. `descending` flips the result.
+static int compare_rows(void **a, void **b, Table *table, int col_idx, int descending)
+{
+    ColumnType type = table->columns[col_idx].type;
+    int cmp = 0;
+    
+    if (type == TYPE_INTEGER || type == TYPE_BOOLEAN) {
+        int va = *(int*)a[col_idx];
+        int vb = *(int*)b[col_idx];
+        cmp = (va > vb) - (va < vb);
+    } else if (type == TYPE_FLOAT) {
+        double va = *(double*)a[col_idx];
+        double vb = *(double*)b[col_idx];
+        cmp = (va > vb) - (va < vb);
+    } else {
+        const char *va = (const char*)a[col_idx];
+        const char *vb = (const char*)b[col_idx];
+        cmp = strcmp(va, vb);
+    }
+    
+    return descending ? -cmp : cmp;
+}
 
+// ==================== ORDER BY ====================
+static int match_row_condition(void **row, Table *table, int col_idx,
+                               const char *op, const char *value,
+                               int cond_int, double cond_float);
+static void print_row(void **row, Table *table, int *column_indices, int col_count);
+static int compare_rows(void **a, void **b, Table *table, int col_idx, int descending);
 static int handle_order_by(TokenList *tokens) {
     if (tokens->count < 6) return -1;
     
@@ -1125,11 +1153,11 @@ static int handle_order_by(TokenList *tokens) {
             break;
         }
     }
-    
     if (from_idx == -1) return -1;
     
     char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    strncpy(table_name, tokens->tokens[from_idx + 1], sizeof(table_name) - 1);
+    table_name[sizeof(table_name) - 1] = '\0';
     
     Table *table = find_table(table_name);
     if (!table) {
@@ -1144,11 +1172,16 @@ static int handle_order_by(TokenList *tokens) {
             break;
         }
     }
-    
     if (order_idx == -1) return -1;
     
+    if (order_idx + 2 >= tokens->count) {
+        printf("ERROR: Malformed ORDER BY\n");
+        return -1;
+    }
+    
     char col_name[64];
-    strcpy(col_name, tokens->tokens[order_idx + 2]);
+    strncpy(col_name, tokens->tokens[order_idx + 2], sizeof(col_name) - 1);
+    col_name[sizeof(col_name) - 1] = '\0';
     
     int col_idx = table_get_column_index(table, col_name);
     if (col_idx == -1) {
@@ -1157,38 +1190,36 @@ static int handle_order_by(TokenList *tokens) {
     }
     
     int descending = 0;
-    if (order_idx + 3 < tokens->count && strcmp(tokens->tokens[order_idx + 3], "DESC") == 0) {
-        descending = 1;
+    if (order_idx + 3 < tokens->count) {
+        char dir[MAX_TOKEN_LEN];
+        strncpy(dir, tokens->tokens[order_idx + 3], sizeof(dir) - 1);
+        dir[sizeof(dir) - 1] = '\0';
+        to_upper(dir);
+        if (strcmp(dir, "DESC") == 0) descending = 1;
     }
     
-    for (size_t i = 0; i < table->row_count; i++) {
-        size_t best_idx = i;
-        for (size_t j = i + 1; j < table->row_count; j++) {
-            void **row_i = (void**)table->rows[best_idx];
-            void **row_j = (void**)table->rows[j];
-            
-            int val_i = 0, val_j = 0;
-            
-            if (table->columns[col_idx].type == TYPE_INTEGER ||
-                table->columns[col_idx].type == TYPE_BOOLEAN) {
-                val_i = *(int*)row_i[col_idx];
-                val_j = *(int*)row_j[col_idx];
-            }
-            
-            if (descending) {
-                if (val_j > val_i) best_idx = j;
-            } else {
-                if (val_j < val_i) best_idx = j;
-            }
-        }
+    // Build a sorted COPY of the row pointers — do NOT mutate table->rows
+    size_t n = table->row_count;
+    void ***sorted = (void***)malloc(n * sizeof(void**));
+    if (!sorted && n > 0) {
+        printf("ERROR: Out of memory\n");
+        return -1;
+    }
+    for (size_t i = 0; i < n; i++) sorted[i] = (void**)table->rows[i];
+    
+    // Simple insertion sort — fine for small tables, replace with qsort later
+    for (size_t i = 1; i < n; i++) {
+        void **key = sorted[i];
+        size_t j = i;
         
-        if (best_idx != i) {
-            void **temp = (void**)table->rows[i];
-            table->rows[i] = table->rows[best_idx];
-            table->rows[best_idx] = temp;
+        while (j > 0 && compare_rows(sorted[j - 1], key, table, col_idx, descending) > 0) {
+            sorted[j] = sorted[j - 1];
+            j--;
         }
+        sorted[j] = key;
     }
     
+    // Print header
     for (int i = 0; i < table->column_count; i++) {
         printf("%-15s ", table->columns[i].name);
     }
@@ -1198,34 +1229,16 @@ static int handle_order_by(TokenList *tokens) {
     }
     printf("\n");
     
-    for (size_t r = 0; r < table->row_count; r++) {
-        void **row = (void**)table->rows[r];
-        for (int c = 0; c < table->column_count; c++) {
-            switch (table->columns[c].type) {
-                case TYPE_INTEGER:
-                    printf("%-15d ", *(int*)row[c]);
-                    break;
-                case TYPE_BOOLEAN:
-                    printf("%-15s ", *(int*)row[c] ? "TRUE" : "FALSE");
-                    break;
-                case TYPE_TEXT:
-                    printf("%-15s ", (char*)row[c]);
-                    break;
-                case TYPE_UUID:
-                    printf("%-38s ", (char*)row[c]);
-                    break;
-                case TYPE_JSON:
-                    printf("%-30s ", (char*)row[c]);
-                    break;
-                case TYPE_FLOAT:
-                    printf("%-15.2f ", *(double*)row[c]);
-                    break;
-            }
-        }
+    // Print sorted rows
+    int all_cols[MAX_COLUMNS];
+    for (int i = 0; i < table->column_count; i++) all_cols[i] = i;
+    for (size_t r = 0; r < n; r++) {
+        print_row(sorted[r], table, all_cols, table->column_count);
         printf("\n");
     }
-    printf("(%zu rows)\n", table->row_count);
+    printf("(%zu row%s)\n", n, n == 1 ? "" : "s");
     
+    free(sorted);
     return 0;
 }
 
@@ -1937,6 +1950,91 @@ static int handle_insert(TokenList *tokens) {
     return 0;
 }
 
+// Compares a single row against a (column, operator, value) condition.
+// Handles all column types uniformly.
+static int match_row_condition(void **row, Table *table, int col_idx,
+                               const char *op, const char *value,
+                               int cond_int, double cond_float)
+{
+    ColumnType type = table->columns[col_idx].type;
+    
+    // Numeric types: INTEGER, BOOLEAN, FLOAT
+    if (type == TYPE_INTEGER || type == TYPE_BOOLEAN) {
+        int row_val = *(int*)row[col_idx];
+        if (strcmp(op, ">")  == 0 && row_val >  cond_int) return 1;
+        if (strcmp(op, "<")  == 0 && row_val <  cond_int) return 1;
+        if (strcmp(op, "=")  == 0 && row_val == cond_int) return 1;
+        if (strcmp(op, ">=") == 0 && row_val >= cond_int) return 1;
+        if (strcmp(op, "<=") == 0 && row_val <= cond_int) return 1;
+        if (strcmp(op, "!=") == 0 && row_val != cond_int) return 1;
+        if (strcmp(op, "<>") == 0 && row_val != cond_int) return 1;
+        return 0;
+    }
+    
+    if (type == TYPE_FLOAT) {
+        double row_val = *(double*)row[col_idx];
+        if (strcmp(op, ">")  == 0 && row_val >  cond_float) return 1;
+        if (strcmp(op, "<")  == 0 && row_val <  cond_float) return 1;
+        if (strcmp(op, "=")  == 0 && row_val == cond_float) return 1;
+        if (strcmp(op, ">=") == 0 && row_val >= cond_float) return 1;
+        if (strcmp(op, "<=") == 0 && row_val <= cond_float) return 1;
+        if (strcmp(op, "!=") == 0 && row_val != cond_float) return 1;
+        if (strcmp(op, "<>") == 0 && row_val != cond_float) return 1;
+        return 0;
+    }
+    
+    // String-comparable types: TEXT, UUID, JSON, DATE, TIMESTAMP
+    if (type == TYPE_TEXT || type == TYPE_UUID || type == TYPE_JSON ||
+        type == TYPE_DATE || type == TYPE_TIMESTAMP) {
+        const char *row_val = (const char*)row[col_idx];
+        int cmp = strcmp(row_val, value);
+        if (strcmp(op, "=")  == 0 && cmp == 0) return 1;
+        if (strcmp(op, "!=") == 0 && cmp != 0) return 1;
+        if (strcmp(op, "<>") == 0 && cmp != 0) return 1;
+        if (strcmp(op, ">")  == 0 && cmp >  0) return 1;
+        if (strcmp(op, "<")  == 0 && cmp <  0) return 1;
+        if (strcmp(op, ">=") == 0 && cmp >= 0) return 1;
+        if (strcmp(op, "<=") == 0 && cmp <= 0) return 1;
+        return 0;
+    }
+    
+    return 0;
+}
+
+// Prints a single row using the given column indices.
+static void print_row(void **row, Table *table, int *column_indices, int col_count)
+{
+    for (int i = 0; i < col_count; i++) {
+        int idx = column_indices[i];
+        switch (table->columns[idx].type) {
+            case TYPE_INTEGER:
+                printf("%-15d ", *(int*)row[idx]);
+                break;
+            case TYPE_BOOLEAN:
+                printf("%-15s ", *(int*)row[idx] ? "TRUE" : "FALSE");
+                break;
+            case TYPE_TEXT:
+                printf("%-15s ", (char*)row[idx]);
+                break;
+            case TYPE_UUID:
+                printf("%-38s ", (char*)row[idx]);
+                break;
+            case TYPE_JSON:
+                printf("%-30s ", (char*)row[idx]);
+                break;
+            case TYPE_DATE:
+                printf("%-15s ", (char*)row[idx]);
+                break;
+            case TYPE_TIMESTAMP:
+                printf("%-25s ", (char*)row[idx]);
+                break;
+            case TYPE_FLOAT:
+                printf("%-15.2f ", *(double*)row[idx]);
+                break;
+        }
+    }
+}
+
 // ==================== SELECT ====================
 
 static int handle_select(TokenList *tokens) {
@@ -1987,13 +2085,22 @@ static int handle_select(TokenList *tokens) {
         return 0;
     }
     
+    // Bounds check for WHERE <col> <op> <value>
+    if (from_idx + 5 >= tokens->count) {
+        printf("ERROR: Malformed WHERE clause\n");
+        return -1;
+    }
+    
     char col_name[64];
-    char op[4];
+    char op[8];
     char value[256];
     
-    strcpy(col_name, tokens->tokens[from_idx + 3]);
-    strcpy(op, tokens->tokens[from_idx + 4]);
-    strcpy(value, tokens->tokens[from_idx + 5]);
+    strncpy(col_name, tokens->tokens[from_idx + 3], sizeof(col_name) - 1);
+    col_name[sizeof(col_name) - 1] = '\0';
+    strncpy(op, tokens->tokens[from_idx + 4], sizeof(op) - 1);
+    op[sizeof(op) - 1] = '\0';
+    strncpy(value, tokens->tokens[from_idx + 5], sizeof(value) - 1);
+    value[sizeof(value) - 1] = '\0';
     
     int col_idx = table_get_column_index(table, col_name);
     if (col_idx == -1) {
@@ -2003,20 +2110,27 @@ static int handle_select(TokenList *tokens) {
     
     char logic[8] = "";
     int col2_idx = -1;
-    char op2[4] = "";
+    char op2[8] = "";
     char value2[256] = "";
     
     if (from_idx + 6 < tokens->count) {
-        strcpy(logic, tokens->tokens[from_idx + 6]);
-        to_upper(logic);
+        char maybe_logic[MAX_TOKEN_LEN];
+        strncpy(maybe_logic, tokens->tokens[from_idx + 6], sizeof(maybe_logic) - 1);
+        maybe_logic[sizeof(maybe_logic) - 1] = '\0';
+        to_upper(maybe_logic);
         
-        if ((strcmp(logic, "AND") == 0 || strcmp(logic, "OR") == 0) && 
+        if ((strcmp(maybe_logic, "AND") == 0 || strcmp(maybe_logic, "OR") == 0) && 
             from_idx + 9 < tokens->count) {
             
+            strcpy(logic, maybe_logic);
+            
             char col2_name[64];
-            strcpy(col2_name, tokens->tokens[from_idx + 7]);
-            strcpy(op2, tokens->tokens[from_idx + 8]);
-            strcpy(value2, tokens->tokens[from_idx + 9]);
+            strncpy(col2_name, tokens->tokens[from_idx + 7], sizeof(col2_name) - 1);
+            col2_name[sizeof(col2_name) - 1] = '\0';
+            strncpy(op2, tokens->tokens[from_idx + 8], sizeof(op2) - 1);
+            op2[sizeof(op2) - 1] = '\0';
+            strncpy(value2, tokens->tokens[from_idx + 9], sizeof(value2) - 1);
+            value2[sizeof(value2) - 1] = '\0';
             
             col2_idx = table_get_column_index(table, col2_name);
         }
@@ -2031,17 +2145,20 @@ static int handle_select(TokenList *tokens) {
     
     int match_count = 0;
     int cond_val = atoi(value);
+    double cond_fval = atof(value);
     int cond2_val = atoi(value2);
+    double cond2_fval = atof(value2);
     
-    // Convert TRUE/FALSE to 1/0
     char upper_val[256];
-    strcpy(upper_val, value);
+    strncpy(upper_val, value, sizeof(upper_val) - 1);
+    upper_val[sizeof(upper_val) - 1] = '\0';
     to_upper(upper_val);
     if (strcmp(upper_val, "TRUE") == 0) cond_val = 1;
     else if (strcmp(upper_val, "FALSE") == 0) cond_val = 0;
     
     char upper_val2[256];
-    strcpy(upper_val2, value2);
+    strncpy(upper_val2, value2, sizeof(upper_val2) - 1);
+    upper_val2[sizeof(upper_val2) - 1] = '\0';
     to_upper(upper_val2);
     if (strcmp(upper_val2, "TRUE") == 0) cond2_val = 1;
     else if (strcmp(upper_val2, "FALSE") == 0) cond2_val = 0;
@@ -2049,75 +2166,17 @@ static int handle_select(TokenList *tokens) {
     for (size_t r = 0; r < table->row_count; r++) {
         void **row = (void**)table->rows[r];
         
-        int matches = 0;
-        if (table->columns[col_idx].type == TYPE_INTEGER ||
-            table->columns[col_idx].type == TYPE_BOOLEAN) {
-            int row_val = *(int*)row[col_idx];
-            if (strcmp(op, ">") == 0 && row_val > cond_val) matches = 1;
-            else if (strcmp(op, "<") == 0 && row_val < cond_val) matches = 1;
-            else if (strcmp(op, "=") == 0 && row_val == cond_val) matches = 1;
-            else if (strcmp(op, ">=") == 0 && row_val >= cond_val) matches = 1;
-            else if (strcmp(op, "<=") == 0 && row_val <= cond_val) matches = 1;
-            else if (strcmp(op, "!=") == 0 && row_val != cond_val) matches = 1;
-            else if (strcmp(op, "<>") == 0 && row_val != cond_val) matches = 1;
-        } else if (table->columns[col_idx].type == TYPE_TEXT ||
-                   table->columns[col_idx].type == TYPE_UUID ||
-                   table->columns[col_idx].type == TYPE_JSON) {
-            char *row_val = (char*)row[col_idx];
-            if (strcmp(op, "=") == 0 && strcmp(row_val, value) == 0) matches = 1;
-            else if (strcmp(op, "!=") == 0 && strcmp(row_val, value) != 0) matches = 1;
-            else if (strcmp(op, "<>") == 0 && strcmp(row_val, value) != 0) matches = 1;
-        }
+        int matches = match_row_condition(row, table, col_idx, op, value, cond_val, cond_fval);
         
         if (col2_idx >= 0 && strlen(logic) > 0) {
-            int matches2 = 0;
-            if (table->columns[col2_idx].type == TYPE_INTEGER ||
-                table->columns[col2_idx].type == TYPE_BOOLEAN) {
-                int row_val2 = *(int*)row[col2_idx];
-                if (strcmp(op2, ">") == 0 && row_val2 > cond2_val) matches2 = 1;
-                else if (strcmp(op2, "<") == 0 && row_val2 < cond2_val) matches2 = 1;
-                else if (strcmp(op2, "=") == 0 && row_val2 == cond2_val) matches2 = 1;
-                else if (strcmp(op2, ">=") == 0 && row_val2 >= cond2_val) matches2 = 1;
-                else if (strcmp(op2, "<=") == 0 && row_val2 <= cond2_val) matches2 = 1;
-                else if (strcmp(op2, "!=") == 0 && row_val2 != cond2_val) matches2 = 1;
-                else if (strcmp(op2, "<>") == 0 && row_val2 != cond2_val) matches2 = 1;
-            } else if (table->columns[col2_idx].type == TYPE_TEXT ||
-                       table->columns[col2_idx].type == TYPE_UUID ||
-                       table->columns[col2_idx].type == TYPE_JSON) {
-                char *row_val2 = (char*)row[col2_idx];
-                if (strcmp(op2, "=") == 0 && strcmp(row_val2, value2) == 0) matches2 = 1;
-                else if (strcmp(op2, "!=") == 0 && strcmp(row_val2, value2) != 0) matches2 = 1;
-                else if (strcmp(op2, "<>") == 0 && strcmp(row_val2, value2) != 0) matches2 = 1;
-            }
+            int matches2 = match_row_condition(row, table, col2_idx, op2, value2, cond2_val, cond2_fval);
             
             if (strcmp(logic, "AND") == 0) matches = matches && matches2;
             else matches = matches || matches2;
         }
         
         if (matches) {
-            for (int i = 0; i < col_count; i++) {
-                int idx = column_indices[i];
-                switch (table->columns[idx].type) {
-                    case TYPE_INTEGER:
-                        printf("%-15d ", *(int*)row[idx]);
-                        break;
-                    case TYPE_BOOLEAN:
-                        printf("%-15s ", *(int*)row[idx] ? "TRUE" : "FALSE");
-                        break;
-                    case TYPE_TEXT:
-                        printf("%-15s ", (char*)row[idx]);
-                        break;
-                    case TYPE_UUID:
-                        printf("%-38s ", (char*)row[idx]);
-                        break;
-                    case TYPE_JSON:
-                        printf("%-30s ", (char*)row[idx]);
-                        break;
-                    case TYPE_FLOAT:
-                        printf("%-15.2f ", *(double*)row[idx]);
-                        break;
-                }
-            }
+            print_row(row, table, column_indices, col_count);
             printf("\n");
             match_count++;
         }
@@ -2130,10 +2189,16 @@ static int handle_select(TokenList *tokens) {
 // ==================== UPDATE ====================
 
 static int handle_update(TokenList *tokens) {
-    if (tokens->count < 6) return -1;
+    // UPDATE <table> SET <col> = <value> WHERE <col> <op> <value>
+    // tokens:      0      1    2   3   4    5     6     7    8    9
+    if (tokens->count < 10) {
+        printf("ERROR: UPDATE requires a WHERE clause\n");
+        return -1;
+    }
     
     char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[1]);
+    strncpy(table_name, tokens->tokens[1], sizeof(table_name) - 1);
+    table_name[sizeof(table_name) - 1] = '\0';
     
     Table *table = find_table(table_name);
     if (!table) {
@@ -2141,11 +2206,21 @@ static int handle_update(TokenList *tokens) {
         return -1;
     }
     
-    char set_col[64];
-    char set_value[128];
+    // Verify SET keyword
+    char set_kw[MAX_TOKEN_LEN];
+    strncpy(set_kw, tokens->tokens[2], sizeof(set_kw) - 1);
+    set_kw[sizeof(set_kw) - 1] = '\0';
+    to_upper(set_kw);
+    if (strcmp(set_kw, "SET") != 0) {
+        printf("ERROR: Expected SET\n");
+        return -1;
+    }
     
-    strcpy(set_col, tokens->tokens[3]);
-    strcpy(set_value, tokens->tokens[5]);
+    char set_col[64], set_value[256];
+    strncpy(set_col, tokens->tokens[3], sizeof(set_col) - 1);
+    set_col[sizeof(set_col) - 1] = '\0';
+    strncpy(set_value, tokens->tokens[5], sizeof(set_value) - 1);
+    set_value[sizeof(set_value) - 1] = '\0';
     
     int set_idx = table_get_column_index(table, set_col);
     if (set_idx == -1) {
@@ -2153,78 +2228,23 @@ static int handle_update(TokenList *tokens) {
         return -1;
     }
     
-    if (tokens->count >= 8 && strcmp(tokens->tokens[6], "WHERE") == 0) {
-        char where_col[64];
-        char where_op[4];
-        char where_value[128];
-        
-        strcpy(where_col, tokens->tokens[7]);
-        strcpy(where_op, tokens->tokens[8]);
-        strcpy(where_value, tokens->tokens[9]);
-        
-        int where_idx = table_get_column_index(table, where_col);
-        if (where_idx == -1) {
-            printf("ERROR: Column '%s' not found\n", where_col);
-            return -1;
-        }
-        
-        int updated = 0;
-        int cond_val = atoi(where_value);
-        
-        for (size_t r = 0; r < table->row_count; r++) {
-            void **row = (void**)table->rows[r];
-            
-            int matches = 0;
-            if (table->columns[where_idx].type == TYPE_INTEGER) {
-                int row_val = *(int*)row[where_idx];
-                if (strcmp(where_op, "=") == 0 && row_val == cond_val) matches = 1;
-                else if (strcmp(where_op, ">") == 0 && row_val > cond_val) matches = 1;
-                else if (strcmp(where_op, "<") == 0 && row_val < cond_val) matches = 1;
-            }
-            
-            if (matches) {
-                if (table->columns[set_idx].type == TYPE_INTEGER) {
-                    *(int*)row[set_idx] = atoi(set_value);
-                } else if (table->columns[set_idx].type == TYPE_TEXT) {
-                    free(row[set_idx]);
-                    row[set_idx] = (void*)malloc(strlen(set_value) + 1);
-                    strcpy((char*)row[set_idx], set_value);
-                }
-                updated++;
-            }
-        }
-        
-        sql_save();
-        printf("OK. Updated %d row%s\n", updated, updated == 1 ? "" : "s");
-    } else {
-        printf("ERROR: UPDATE without WHERE is too dangerous. Add a WHERE clause.\n");
+    // Verify WHERE keyword
+    char where_kw[MAX_TOKEN_LEN];
+    strncpy(where_kw, tokens->tokens[6], sizeof(where_kw) - 1);
+    where_kw[sizeof(where_kw) - 1] = '\0';
+    to_upper(where_kw);
+    if (strcmp(where_kw, "WHERE") != 0) {
+        printf("ERROR: UPDATE without WHERE is too dangerous\n");
         return -1;
     }
     
-    return 0;
-}
-
-// ==================== DELETE ====================
-
-static int handle_delete(TokenList *tokens) {
-    if (tokens->count < 6) return -1;
-    
-    char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[2]);
-    
-    Table *table = find_table(table_name);
-    if (!table) {
-        printf("ERROR: Table '%s' not found\n", table_name);
-        return -1;
-    }
-    
-    char where_col[64];
-    char where_op[4];
-    char where_value[128];
-    
-    strcpy(where_col, tokens->tokens[4]);
-    strcpy(where_op, tokens->tokens[5]);
-    strcpy(where_value, tokens->tokens[6]);
+    char where_col[64], where_op[8], where_value[256];
+    strncpy(where_col,   tokens->tokens[7], sizeof(where_col) - 1);
+    where_col[sizeof(where_col) - 1] = '\0';
+    strncpy(where_op,    tokens->tokens[8], sizeof(where_op) - 1);
+    where_op[sizeof(where_op) - 1] = '\0';
+    strncpy(where_value, tokens->tokens[9], sizeof(where_value) - 1);
+    where_value[sizeof(where_value) - 1] = '\0';
     
     int where_idx = table_get_column_index(table, where_col);
     if (where_idx == -1) {
@@ -2232,76 +2252,136 @@ static int handle_delete(TokenList *tokens) {
         return -1;
     }
     
-    int deleted = 0;
-    int cond_val = atoi(where_value);
+    int cond_int = atoi(where_value);
+    double cond_float = atof(where_value);
+    int set_int = atoi(set_value);
+    double set_float = atof(set_value);
+    
+    char upper_set[256];
+    strncpy(upper_set, set_value, sizeof(upper_set) - 1);
+    upper_set[sizeof(upper_set) - 1] = '\0';
+    to_upper(upper_set);
+    if (strcmp(upper_set, "TRUE") == 0) set_int = 1;
+    else if (strcmp(upper_set, "FALSE") == 0) set_int = 0;
+    
+    int updated = 0;
     
     for (size_t r = 0; r < table->row_count; r++) {
         void **row = (void**)table->rows[r];
         
-        int matches = 0;
-        if (table->columns[where_idx].type == TYPE_INTEGER) {
-            int row_val = *(int*)row[where_idx];
-            if (strcmp(where_op, "=") == 0 && row_val == cond_val) matches = 1;
-            else if (strcmp(where_op, ">") == 0 && row_val > cond_val) matches = 1;
-            else if (strcmp(where_op, "<") == 0 && row_val < cond_val) matches = 1;
+        if (!match_row_condition(row, table, where_idx, where_op, where_value,
+                                 cond_int, cond_float)) {
+            continue;
         }
         
-        if (matches) {
-            int deleted_value = 0;
-            if (table->columns[where_idx].type == TYPE_INTEGER) {
-                deleted_value = *(int*)row[where_idx];
+        // Apply the SET, dispatching on the target column's type
+        switch (table->columns[set_idx].type) {
+            case TYPE_INTEGER:
+            case TYPE_BOOLEAN:
+                *(int*)row[set_idx] = set_int;
+                break;
+            case TYPE_FLOAT:
+                *(double*)row[set_idx] = set_float;
+                break;
+            case TYPE_TEXT:
+            case TYPE_UUID:
+            case TYPE_JSON:
+            case TYPE_DATE:
+            case TYPE_TIMESTAMP: {
+                free(row[set_idx]);
+                char *copy = (char*)malloc(strlen(set_value) + 1);
+                if (!copy) continue;
+                strcpy(copy, set_value);
+                row[set_idx] = copy;
+                break;
             }
-            
-            // Handle CASCADE for all foreign keys pointing to this table
-            for (int fk = 0; fk < foreign_key_count; fk++) {
-                if (strcmp(foreign_keys[fk].ref_table, table_name) != 0) continue;
-                if (!foreign_keys[fk].on_delete_cascade) continue;
-                
-                Table *child_table = find_table(foreign_keys[fk].table_name);
-                if (!child_table) continue;
-                
-                int child_col_idx = table_get_column_index(child_table, 
-                                                            foreign_keys[fk].col_name);
-                if (child_col_idx == -1) continue;
-                
-                // Delete all child rows with matching FK value
-                for (size_t cr = 0; cr < child_table->row_count; cr++) {
-                    void **child_row = (void**)child_table->rows[cr];
-                    
-                    int child_matches = 0;
-                    if (child_table->columns[child_col_idx].type == TYPE_INTEGER) {
-                        if (*(int*)child_row[child_col_idx] == deleted_value) {
-                            child_matches = 1;
-                        }
-                    }
-                    
-                    if (child_matches) {
-                        for (int c = 0; c < child_table->column_count; c++) {
-                            free(child_row[c]);
-                        }
-                        free(child_row);
-                        
-                        for (size_t j = cr; j < child_table->row_count - 1; j++) {
-                            child_table->rows[j] = child_table->rows[j + 1];
-                        }
-                        child_table->row_count--;
-                        cr--;
-                    }
-                }
-            }
-            
-            // Delete the parent row
+        }
+        updated++;
+    }
+    
+    sql_save();
+    printf("OK. Updated %d row%s\n", updated, updated == 1 ? "" : "s");
+    return 0;
+}
+
+// ==================== DELETE ====================
+
+static int handle_delete(TokenList *tokens) {
+    // DELETE FROM <table> WHERE <col> <op> <value>
+    // tokens:  0      1    2      3     4    5     6
+    if (tokens->count < 7) {
+        printf("ERROR: DELETE requires a WHERE clause\n");
+        return -1;
+    }
+    
+    char from_kw[MAX_TOKEN_LEN];
+    strncpy(from_kw, tokens->tokens[1], sizeof(from_kw) - 1);
+    from_kw[sizeof(from_kw) - 1] = '\0';
+    to_upper(from_kw);
+    if (strcmp(from_kw, "FROM") != 0) {
+        printf("ERROR: Expected FROM\n");
+        return -1;
+    }
+    
+    char table_name[MAX_TABLE_NAME];
+    strncpy(table_name, tokens->tokens[2], sizeof(table_name) - 1);
+    table_name[sizeof(table_name) - 1] = '\0';
+    
+    Table *table = find_table(table_name);
+    if (!table) {
+        printf("ERROR: Table '%s' not found\n", table_name);
+        return -1;
+    }
+    
+    char where_kw[MAX_TOKEN_LEN];
+    strncpy(where_kw, tokens->tokens[3], sizeof(where_kw) - 1);
+    where_kw[sizeof(where_kw) - 1] = '\0';
+    to_upper(where_kw);
+    if (strcmp(where_kw, "WHERE") != 0) {
+        printf("ERROR: DELETE without WHERE is too dangerous\n");
+        return -1;
+    }
+    
+    char where_col[64], where_op[8], where_value[256];
+    strncpy(where_col,   tokens->tokens[4], sizeof(where_col) - 1);
+    where_col[sizeof(where_col) - 1] = '\0';
+    strncpy(where_op,    tokens->tokens[5], sizeof(where_op) - 1);
+    where_op[sizeof(where_op) - 1] = '\0';
+    strncpy(where_value, tokens->tokens[6], sizeof(where_value) - 1);
+    where_value[sizeof(where_value) - 1] = '\0';
+    
+    int where_idx = table_get_column_index(table, where_col);
+    if (where_idx == -1) {
+        printf("ERROR: Column '%s' not found\n", where_col);
+        return -1;
+    }
+    
+    int cond_int = atoi(where_value);
+    double cond_float = atof(where_value);
+    
+    int deleted = 0;
+    size_t r = 0;
+    
+    while (r < table->row_count) {
+        void **row = (void**)table->rows[r];
+        
+        if (match_row_condition(row, table, where_idx, where_op, where_value,
+                                cond_int, cond_float)) {
+            // Free the row's cells
             for (int c = 0; c < table->column_count; c++) {
                 free(row[c]);
             }
             free(row);
             
-            for (size_t j = r; j < table->row_count - 1; j++) {
+            // Shift remaining rows down
+            for (size_t j = r; j + 1 < table->row_count; j++) {
                 table->rows[j] = table->rows[j + 1];
             }
             table->row_count--;
-            r--;
             deleted++;
+            // Don't advance r — the next row is now at index r
+        } else {
+            r++;
         }
     }
     
