@@ -3030,6 +3030,10 @@ void sql_recover_wal(void) {
 // ==================== INIT/SHUTDOWN ====================
 
 void sql_init(void) {
+    static int initialized = 0;
+    if (initialized) return;
+    initialized = 1;
+    
     table_count = 0;
     view_count = 0;
     foreign_key_count = 0;
