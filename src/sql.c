@@ -1348,6 +1348,14 @@ static int handle_limit(TokenList *tokens) {
 
 // ==================== GROUP BY ====================
 
+// Grouping entry: for storing one group's key and count.
+typedef struct {
+    char key_text[256];   // for TEXT-type grouping, the string value
+    int  key_int;          // for INTEGER/BOOLEAN grouping
+    int  count;
+    int  used;
+} GroupEntry;
+
 static int handle_group_by(TokenList *tokens) {
     if (tokens->count < 6) return -1;
     
@@ -1358,17 +1366,19 @@ static int handle_group_by(TokenList *tokens) {
             break;
         }
     }
-    
     if (from_idx == -1) return -1;
     
     char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    strncpy(table_name, tokens->tokens[from_idx + 1], sizeof(table_name) - 1);
+    table_name[sizeof(table_name) - 1] = '\0';
     
     Table *table = find_table(table_name);
     if (!table) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
+    
+    if (!check_permission(table_name, PERM_SELECT)) return -1;
     
     int group_idx = -1;
     for (int i = from_idx + 2; i < tokens->count; i++) {
@@ -1377,11 +1387,11 @@ static int handle_group_by(TokenList *tokens) {
             break;
         }
     }
-    
     if (group_idx == -1) return -1;
     
     char group_col[64];
-    strcpy(group_col, tokens->tokens[group_idx + 2]);
+    strncpy(group_col, tokens->tokens[group_idx + 2], sizeof(group_col) - 1);
+    group_col[sizeof(group_col) - 1] = '\0';
     
     int col_idx = table_get_column_index(table, group_col);
     if (col_idx == -1) {
@@ -1389,35 +1399,150 @@ static int handle_group_by(TokenList *tokens) {
         return -1;
     }
     
-    printf("%-15s %-10s\n", group_col, "COUNT");
-    printf("%-15s %-10s\n", "---", "---");
+    ColumnType type = table->columns[col_idx].type;
+    int is_string_type = (type == TYPE_TEXT || type == TYPE_UUID ||
+                          type == TYPE_JSON || type == TYPE_DATE ||
+                          type == TYPE_TIMESTAMP);
     
-    for (size_t i = 0; i < table->row_count; i++) {
+    // Filter by WHERE if present
+    Predicate *where_pred = extract_where(tokens, table, from_idx + 2);
+    
+    // Collect rows that pass the filter
+    size_t n = table->row_count;
+    void ***rows = (void***)malloc(n * sizeof(void**));
+    if (!rows && n > 0) {
+        if (where_pred) predicate_free(where_pred);
+        return -1;
+    }
+    
+    size_t kept = 0;
+    for (size_t i = 0; i < n; i++) {
         void **row = (void**)table->rows[i];
-        int val = *(int*)row[col_idx];
-        
-        int count = 0;
-        int already_counted = 0;
-        
-        for (size_t j = 0; j < i; j++) {
-            void **prev_row = (void**)table->rows[j];
-            if (*(int*)prev_row[col_idx] == val) {
-                already_counted = 1;
-                break;
-            }
+        if (where_pred && !predicate_eval(where_pred, row, table)) {
+            continue;
         }
+        rows[kept++] = row;
+    }
+    
+    if (where_pred) predicate_free(where_pred);
+    
+    // Group the rows
+    GroupEntry *groups = (GroupEntry*)malloc(sizeof(GroupEntry) * kept);
+    if (!groups) { free(rows); return -1; }
+    int group_count = 0;
+    
+    for (size_t i = 0; i < kept; i++) {
+        void **row = rows[i];
         
-        if (!already_counted) {
-            for (size_t j = i; j < table->row_count; j++) {
-                void **check_row = (void**)table->rows[j];
-                if (*(int*)check_row[col_idx] == val) {
-                    count++;
+        if (is_string_type) {
+            const char *val = (const char*)row[col_idx];
+            if (!val) val = "";
+            
+            // Find an existing group with this key
+            int found = -1;
+            for (int g = 0; g < group_count; g++) {
+                if (strcmp(groups[g].key_text, val) == 0) {
+                    found = g;
+                    break;
                 }
             }
-            printf("%-15d %-10d\n", val, count);
+            if (found == -1) {
+                found = group_count++;
+                strncpy(groups[found].key_text, val, sizeof(groups[found].key_text) - 1);
+                groups[found].key_text[sizeof(groups[found].key_text) - 1] = '\0';
+                groups[found].key_int = 0;
+                groups[found].count = 0;
+                groups[found].used = 1;
+            }
+            groups[found].count++;
+        } else {
+            // INTEGER / BOOLEAN / FLOAT
+            int val = 0;
+            if (type == TYPE_FLOAT) {
+                val = (int)(*(double*)row[col_idx]);
+            } else {
+                val = *(int*)row[col_idx];
+            }
+            
+            int found = -1;
+            for (int g = 0; g < group_count; g++) {
+                if (groups[g].used && groups[g].key_int == val) {
+                    found = g;
+                    break;
+                }
+            }
+            if (found == -1) {
+                found = group_count++;
+                groups[found].key_text[0] = '\0';
+                groups[found].key_int = val;
+                groups[found].count = 0;
+                groups[found].used = 1;
+            }
+            groups[found].count++;
         }
     }
     
+    // Apply ORDER BY to groups if present
+    int order_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "ORDER") == 0) {
+            order_idx = i;
+            break;
+        }
+    }
+    
+    if (order_idx >= 0 && order_idx + 2 < tokens->count) {
+        // Only support ORDER BY on the group column itself
+        char order_col[64];
+        strncpy(order_col, tokens->tokens[order_idx + 2], sizeof(order_col) - 1);
+        order_col[sizeof(order_col) - 1] = '\0';
+        
+        if (strcmp(order_col, group_col) == 0) {
+            int descending = 0;
+            if (order_idx + 3 < tokens->count) {
+                char dir[MAX_TOKEN_LEN];
+                strncpy(dir, tokens->tokens[order_idx + 3], sizeof(dir) - 1);
+                dir[sizeof(dir) - 1] = '\0';
+                to_upper(dir);
+                if (strcmp(dir, "DESC") == 0) descending = 1;
+            }
+            
+            // Insertion sort
+            for (int i = 1; i < group_count; i++) {
+                GroupEntry key = groups[i];
+                int j = i;
+                while (j > 0) {
+                    int cmp = 0;
+                    if (is_string_type) {
+                        cmp = strcmp(groups[j - 1].key_text, key.key_text);
+                    } else {
+                        cmp = (groups[j - 1].key_int > key.key_int) -
+                              (groups[j - 1].key_int < key.key_int);
+                    }
+                    if (descending) cmp = -cmp;
+                    if (cmp <= 0) break;
+                    groups[j] = groups[j - 1];
+                    j--;
+                }
+                groups[j] = key;
+            }
+        }
+    }
+    
+    // Print
+    printf("%-25s %-10s\n", group_col, "COUNT");
+    printf("%-25s %-10s\n", "-------------------------", "----------");
+    
+    for (int g = 0; g < group_count; g++) {
+        if (is_string_type) {
+            printf("%-25s %-10d\n", groups[g].key_text, groups[g].count);
+        } else {
+            printf("%-25d %-10d\n", groups[g].key_int, groups[g].count);
+        }
+    }
+    
+    free(groups);
+    free(rows);
     return 0;
 }
 
