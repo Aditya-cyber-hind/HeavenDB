@@ -53,8 +53,7 @@ static int table_count = 0;
 static WAL *active_wal = NULL;
 static AuthSystem *auth_system = NULL;
 static PermissionSystem *perm_system = NULL;
-static int current_savepoint_active = 0;
-static char current_savepoint_name[64] = "";
+
 int g_require_auth = 0;   // set to 1 by main.c when running as a server
 
 typedef struct {
@@ -810,10 +809,14 @@ static int handle_aggregate(TokenList *tokens) {
         return -1;
     }
     
+    if (!check_permission(table_name, PERM_SELECT)) return -1;
+    
     if (strcmp(func_name, "COUNT") == 0) {
         printf("COUNT: %zu\n", table->row_count);
-    } 
-    else if (strcmp(func_name, "SUM") == 0 || strcmp(func_name, "AVG") == 0) {
+        return 0;
+    }
+    
+    if (strcmp(func_name, "SUM") == 0 || strcmp(func_name, "AVG") == 0) {
         char col_name[64] = "";
         
         if (tokens->count > 3) {
@@ -836,33 +839,60 @@ static int handle_aggregate(TokenList *tokens) {
             return -1;
         }
         
-        long long sum = 0;
-        int count = 0;
+        ColumnType type = table->columns[col_idx].type;
         
-        for (size_t r = 0; r < table->row_count; r++) {
-            void **row = (void**)table->rows[r];
-            if (table->columns[col_idx].type == TYPE_INTEGER) {
+        // Handle FLOAT columns
+        if (type == TYPE_FLOAT) {
+            double sum = 0.0;
+            int count = 0;
+            
+            for (size_t r = 0; r < table->row_count; r++) {
+                void **row = (void**)table->rows[r];
+                sum += *(double*)row[col_idx];
+                count++;
+            }
+            
+            if (strcmp(func_name, "SUM") == 0) {
+                printf("SUM(%s): %.2f\n", col_name, sum);
+            } else {
+                if (count > 0) {
+                    printf("AVG(%s): %.2f\n", col_name, sum / count);
+                } else {
+                    printf("AVG(%s): 0\n", col_name);
+                }
+            }
+            return 0;
+        }
+        
+        // Handle INTEGER / BOOLEAN
+        if (type == TYPE_INTEGER || type == TYPE_BOOLEAN) {
+            long long sum = 0;
+            int count = 0;
+            
+            for (size_t r = 0; r < table->row_count; r++) {
+                void **row = (void**)table->rows[r];
                 sum += *(int*)row[col_idx];
                 count++;
             }
+            
+            if (strcmp(func_name, "SUM") == 0) {
+                printf("SUM(%s): %lld\n", col_name, sum);
+            } else {
+                if (count > 0) {
+                    printf("AVG(%s): %.2f\n", col_name, (double)sum / count);
+                } else {
+                    printf("AVG(%s): 0\n", col_name);
+                }
+            }
+            return 0;
         }
         
-        if (strcmp(func_name, "SUM") == 0) {
-            printf("SUM(%s): %lld\n", col_name, sum);
-        } else {
-            if (count > 0) {
-                printf("AVG(%s): %.2f\n", col_name, (double)sum / count);
-            } else {
-                printf("AVG(%s): 0\n", col_name);
-            }
-        }
-    }
-    else {
-        printf("ERROR: Unknown function '%s'\n", func_name);
+        printf("ERROR: Cannot aggregate column '%s' of this type\n", col_name);
         return -1;
     }
     
-    return 0;
+    printf("ERROR: Unknown function '%s'\n", func_name);
+    return -1;
 }
 
 // ==================== MIN/MAX ====================
@@ -896,6 +926,8 @@ static int handle_min_max(TokenList *tokens) {
         return -1;
     }
     
+    if (!check_permission(table_name, PERM_SELECT)) return -1;
+    
     char col_name[64] = "";
     if (tokens->count > 3) {
         strcpy(col_name, tokens->tokens[3]);
@@ -912,26 +944,45 @@ static int handle_min_max(TokenList *tokens) {
         return -1;
     }
     
-    int result = 0;
-    int first = 1;
+    ColumnType type = table->columns[col_idx].type;
+    int is_min = (strcmp(func_name, "MIN") == 0);
     
-    for (size_t r = 0; r < table->row_count; r++) {
-        void **row = (void**)table->rows[r];
-        if (table->columns[col_idx].type == TYPE_INTEGER) {
-            int val = *(int*)row[col_idx];
-            if (first) {
-                result = val;
-                first = 0;
-            } else if (strcmp(func_name, "MIN") == 0 && val < result) {
-                result = val;
-            } else if (strcmp(func_name, "MAX") == 0 && val > result) {
-                result = val;
-            }
+    if (type == TYPE_FLOAT) {
+        int first = 1;
+        double result = 0.0;
+        
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **row = (void**)table->rows[r];
+            double val = *(double*)row[col_idx];
+            
+            if (first) { result = val; first = 0; }
+            else if (is_min && val < result) result = val;
+            else if (!is_min && val > result) result = val;
         }
+        
+        printf("%s(%s): %.2f\n", func_name, col_name, result);
+        return 0;
     }
     
-    printf("%s(%s): %d\n", func_name, col_name, result);
-    return 0;
+    if (type == TYPE_INTEGER || type == TYPE_BOOLEAN) {
+        int first = 1;
+        int result = 0;
+        
+        for (size_t r = 0; r < table->row_count; r++) {
+            void **row = (void**)table->rows[r];
+            int val = *(int*)row[col_idx];
+            
+            if (first) { result = val; first = 0; }
+            else if (is_min && val < result) result = val;
+            else if (!is_min && val > result) result = val;
+        }
+        
+        printf("%s(%s): %d\n", func_name, col_name, result);
+        return 0;
+    }
+    
+    printf("ERROR: Cannot aggregate column '%s' of this type\n", col_name);
+    return -1;
 }
 
 // ==================== DISTINCT ====================
@@ -1163,7 +1214,8 @@ static int handle_like(TokenList *tokens) {
 }
 
 // ==================== LIMIT ====================
-
+static Predicate *extract_where(TokenList *tokens, Table *table, int start_pos);
+static int compare_rows(void **a, void **b, Table *table, int col_idx, int descending);
 static int handle_limit(TokenList *tokens) {
     if (tokens->count < 5) return -1;
     
@@ -1174,17 +1226,19 @@ static int handle_limit(TokenList *tokens) {
             break;
         }
     }
-    
     if (from_idx == -1) return -1;
     
     char table_name[MAX_TABLE_NAME];
-    strcpy(table_name, tokens->tokens[from_idx + 1]);
+    strncpy(table_name, tokens->tokens[from_idx + 1], sizeof(table_name) - 1);
+    table_name[sizeof(table_name) - 1] = '\0';
     
     Table *table = find_table(table_name);
     if (!table) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
+    
+    if (!check_permission(table_name, PERM_SELECT)) return -1;
     
     int limit_idx = -1;
     for (int i = from_idx + 2; i < tokens->count; i++) {
@@ -1193,7 +1247,6 @@ static int handle_limit(TokenList *tokens) {
             break;
         }
     }
-    
     if (limit_idx == -1) return -1;
     
     int limit = atoi(tokens->tokens[limit_idx + 1]);
@@ -1206,6 +1259,74 @@ static int handle_limit(TokenList *tokens) {
         }
     }
     
+    // Filter by WHERE if present
+    Predicate *where_pred = extract_where(tokens, table, from_idx + 2);
+    
+    size_t n = table->row_count;
+    void ***rows = (void***)malloc(n * sizeof(void**));
+    if (!rows && n > 0) {
+        if (where_pred) predicate_free(where_pred);
+        return -1;
+    }
+    
+    size_t kept = 0;
+    for (size_t i = 0; i < n; i++) {
+        void **row = (void**)table->rows[i];
+        if (where_pred && !predicate_eval(where_pred, row, table)) {
+            continue;
+        }
+        rows[kept++] = row;
+    }
+    
+    if (where_pred) predicate_free(where_pred);
+    
+    // Apply ORDER BY if present
+    int order_idx = -1;
+    for (int i = from_idx + 2; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "ORDER") == 0) {
+            order_idx = i;
+            break;
+        }
+    }
+    
+    if (order_idx >= 0 && order_idx + 2 < tokens->count) {
+        char order_col[64];
+        strncpy(order_col, tokens->tokens[order_idx + 2], sizeof(order_col) - 1);
+        order_col[sizeof(order_col) - 1] = '\0';
+        
+        int order_col_idx = table_get_column_index(table, order_col);
+        if (order_col_idx >= 0) {
+            int descending = 0;
+            if (order_idx + 3 < tokens->count) {
+                char dir[MAX_TOKEN_LEN];
+                strncpy(dir, tokens->tokens[order_idx + 3], sizeof(dir) - 1);
+                dir[sizeof(dir) - 1] = '\0';
+                to_upper(dir);
+                if (strcmp(dir, "DESC") == 0) descending = 1;
+            }
+            
+            for (size_t i = 1; i < kept; i++) {
+                void **key = rows[i];
+                size_t j = i;
+                while (j > 0 && compare_rows(rows[j - 1], key, table,
+                                              order_col_idx, descending) > 0) {
+                    rows[j] = rows[j - 1];
+                    j--;
+                }
+                rows[j] = key;
+            }
+        }
+    }
+
+    // Apply offset and limit
+    size_t start = ((size_t)offset < kept) ? (size_t)offset : kept;
+    size_t end = start + (size_t)limit;
+    if (end > kept) end = kept;
+    
+    // Print
+    int all_cols[MAX_COLUMNS];
+    for (int i = 0; i < table->column_count; i++) all_cols[i] = i;
+    
     for (int i = 0; i < table->column_count; i++) {
         printf("%-15s ", table->columns[i].name);
     }
@@ -1215,29 +1336,13 @@ static int handle_limit(TokenList *tokens) {
     }
     printf("\n");
     
-    size_t start_row = (size_t)offset < table->row_count ? (size_t)offset : table->row_count;
-    size_t end_row = start_row + (size_t)limit;
-    if (end_row > table->row_count) end_row = table->row_count;
-    
-    for (size_t r = start_row; r < end_row; r++) {
-        void **row = (void**)table->rows[r];
-        for (int c = 0; c < table->column_count; c++) {
-            switch (table->columns[c].type) {
-                case TYPE_INTEGER:
-                    printf("%-15d ", *(int*)row[c]);
-                    break;
-                case TYPE_TEXT:
-                    printf("%-15s ", (char*)row[c]);
-                    break;
-                case TYPE_FLOAT:
-                    printf("%-15.2f ", *(double*)row[c]);
-                    break;
-            }
-        }
+    for (size_t r = start; r < end; r++) {
+        print_row(rows[r], table, all_cols, table->column_count);
         printf("\n");
     }
-    printf("(%zu rows)\n", end_row - start_row);
+    printf("(%zu row%s)\n", end - start, (end - start) == 1 ? "" : "s");
     
+    free(rows);
     return 0;
 }
 
@@ -1345,7 +1450,6 @@ static int match_row_condition(void **row, Table *table, int col_idx,
                                const char *op, const char *value,
                                int cond_int, double cond_float);
 static void print_row(void **row, Table *table, int *column_indices, int col_count);
-static int compare_rows(void **a, void **b, Table *table, int col_idx, int descending);
 static int handle_order_by(TokenList *tokens) {
     if (tokens->count < 6) return -1;
     
@@ -1367,6 +1471,8 @@ static int handle_order_by(TokenList *tokens) {
         printf("ERROR: Table '%s' not found\n", table_name);
         return -1;
     }
+    
+    if (!check_permission(table_name, PERM_SELECT)) return -1;
     
     int order_idx = -1;
     for (int i = from_idx + 2; i < tokens->count; i++) {
@@ -1401,28 +1507,39 @@ static int handle_order_by(TokenList *tokens) {
         if (strcmp(dir, "DESC") == 0) descending = 1;
     }
     
-    // Build a sorted COPY of the row pointers — do NOT mutate table->rows
+    Predicate *where_pred = extract_where(tokens, table, from_idx + 2);
+    
     size_t n = table->row_count;
-    void ***sorted = (void***)malloc(n * sizeof(void**));
-    if (!sorted && n > 0) {
-        printf("ERROR: Out of memory\n");
+    void ***rows = (void***)malloc(n * sizeof(void**));
+    if (!rows && n > 0) {
+        if (where_pred) predicate_free(where_pred);
         return -1;
     }
-    for (size_t i = 0; i < n; i++) sorted[i] = (void**)table->rows[i];
     
-    // Simple insertion sort — fine for small tables, replace with qsort later
-    for (size_t i = 1; i < n; i++) {
-        void **key = sorted[i];
-        size_t j = i;
-        
-        while (j > 0 && compare_rows(sorted[j - 1], key, table, col_idx, descending) > 0) {
-            sorted[j] = sorted[j - 1];
-            j--;
+    size_t kept = 0;
+    for (size_t i = 0; i < n; i++) {
+        void **row = (void**)table->rows[i];
+        if (where_pred && !predicate_eval(where_pred, row, table)) {
+            continue;
         }
-        sorted[j] = key;
+        rows[kept++] = row;
     }
     
-    // Print header
+    if (where_pred) predicate_free(where_pred);
+    
+    for (size_t i = 1; i < kept; i++) {
+        void **key = rows[i];
+        size_t j = i;
+        while (j > 0 && compare_rows(rows[j - 1], key, table, col_idx, descending) > 0) {
+            rows[j] = rows[j - 1];
+            j--;
+        }
+        rows[j] = key;
+    }
+    
+    int all_cols[MAX_COLUMNS];
+    for (int i = 0; i < table->column_count; i++) all_cols[i] = i;
+    
     for (int i = 0; i < table->column_count; i++) {
         printf("%-15s ", table->columns[i].name);
     }
@@ -1432,18 +1549,16 @@ static int handle_order_by(TokenList *tokens) {
     }
     printf("\n");
     
-    // Print sorted rows
-    int all_cols[MAX_COLUMNS];
-    for (int i = 0; i < table->column_count; i++) all_cols[i] = i;
-    for (size_t r = 0; r < n; r++) {
-        print_row(sorted[r], table, all_cols, table->column_count);
+    for (size_t r = 0; r < kept; r++) {
+        print_row(rows[r], table, all_cols, table->column_count);
         printf("\n");
     }
-    printf("(%zu row%s)\n", n, n == 1 ? "" : "s");
+    printf("(%zu row%s)\n", kept, kept == 1 ? "" : "s");
     
-    free(sorted);
+    free(rows);
     return 0;
 }
+
 
 // ==================== BACKUP ====================
 
@@ -1672,6 +1787,18 @@ static int handle_create_table(TokenList *tokens) {
             }
             else {
                 i++;
+            }
+        }
+        
+        // After parsing this column's constraints, create the index if needed
+        if (table->columns[col_index].is_primary_key || 
+            table->columns[col_index].is_unique) {
+            if (table_create_index(table, col_index) != 0) {
+                // Index creation failed (e.g. non-integer unique column,
+                // or a duplicate was found). For non-integer, that's fine —
+                // uniqueness will be checked linearly in table_insert.
+                // For a duplicate, that's an error.
+                // table_create_index already printed a message if it failed.
             }
         }
         
@@ -2297,7 +2424,7 @@ static int handle_select(TokenList *tokens) {
     int pos = from_idx + 3;
     Predicate *pred = parse_or(tokens, &pos, tokens->count, table);
     if (!pred) {
-        printf("ERROR: Malformed WHERE clause\n");
+        // parse_primary already printed a specific error; don't add noise.
         return -1;
     }
     
@@ -2857,21 +2984,53 @@ static int handle_create_view(TokenList *tokens) {
     
     for (int i = 0; i < view_count; i++) {
         if (strcmp(views[i].name, view_name) == 0) {
-            strncpy(views[i].sql, sql, sizeof(views[i].sql) - 1);
-            views[i].sql[sizeof(views[i].sql) - 1] = '\0';
+            snprintf(views[i].sql, sizeof(views[i].sql), "%s", sql);
             printf("OK. Replaced view '%s'\n", view_name);
             return 0;
         }
     }
     
-    strncpy(views[view_count].name, view_name, sizeof(views[view_count].name) - 1);
-    views[view_count].name[sizeof(views[view_count].name) - 1] = '\0';
-    strncpy(views[view_count].sql, sql, sizeof(views[view_count].sql) - 1);
-    views[view_count].sql[sizeof(views[view_count].sql) - 1] = '\0';
+    snprintf(views[view_count].name, sizeof(views[view_count].name), "%s", view_name);
+    snprintf(views[view_count].sql, sizeof(views[view_count].sql), "%s", sql);
     view_count++;
     
     printf("OK. Created view '%s'\n", view_name);
     return 0;
+}
+
+// Extracts a WHERE predicate from the token list if present.
+// Returns NULL if there's no WHERE clause.
+// The caller must call predicate_free() when done.
+static Predicate *extract_where(TokenList *tokens, Table *table, int start_pos) {
+    // Find WHERE anywhere from start_pos onward
+    int where_idx = -1;
+    for (int i = start_pos; i < tokens->count; i++) {
+        if (strcmp(tokens->tokens[i], "WHERE") == 0) {
+            where_idx = i;
+            break;
+        }
+    }
+    
+    if (where_idx == -1) return NULL;
+    if (where_idx + 1 >= tokens->count) return NULL;
+    
+    // Parse the predicate from where_idx+1 until the next clause keyword
+    int end = tokens->count;
+    for (int i = where_idx + 1; i < tokens->count; i++) {
+        const char *tok = tokens->tokens[i];
+        if (strcmp(tok, "ORDER") == 0 ||
+            strcmp(tok, "LIMIT")  == 0 ||
+            strcmp(tok, "GROUP")  == 0 ||
+            strcmp(tok, "HAVING") == 0 ||
+            strcmp(tok, "OFFSET") == 0) {
+            end = i;
+            break;
+        }
+    }
+    
+    int pos = where_idx + 1;
+    Predicate *pred = parse_or(tokens, &pos, end, table);
+    return pred;
 }
 
 static int handle_select_view(TokenList *tokens) {
@@ -4234,21 +4393,14 @@ static int handle_create_index(TokenList *tokens) {
         return 0;
     }
     
-    if (table->columns[col_idx].index) {
+    if (table->columns[col_idx].index != NULL) {
         printf("OK. Index already exists on '%s.%s'\n", table_name, col_name);
         return 0;
     }
     
-    table->columns[col_idx].index = btree_create();
-    if (!table->columns[col_idx].index) {
-        printf("ERROR: Failed to create B-Tree\n");
+    if (table_create_index(table, col_idx) != 0) {
+        printf("ERROR: Failed to create index '%s'\n", index_name);
         return -1;
-    }
-    
-    for (size_t r = 0; r < table->row_count; r++) {
-        void **row = (void**)table->rows[r];
-        int key = *(int*)row[col_idx];
-        btree_insert(table->columns[col_idx].index, key, row);
     }
     
     printf("OK. Created index '%s' on '%s(%s)'\n", index_name, table_name, col_name);

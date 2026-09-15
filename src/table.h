@@ -46,4 +46,8 @@ void table_destroy(Table *table);
 int table_get_column_index(Table *table, const char *name);
 BTree *table_get_index(Table *table, int column_index);
 
+// Creates a B-Tree index on the given column (INTEGER / BOOLEAN only).
+// Returns 0 on success, -1 on failure.
+int table_create_index(Table *table, int col_idx);
+
 #endif // HEAVENDB_TABLE_H

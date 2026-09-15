@@ -43,15 +43,51 @@ int table_add_column(Table *table, const char *name, ColumnType type) {
     col->is_not_null = 0;
     col->is_auto_increment = 0;
     col->next_auto_value = 1;
-    
-    if (type == TYPE_INTEGER) {
-        col->index = btree_create();
-        if (!col->index) return -1;
-    } else {
-        col->index = NULL;
-    }
+    col->index = NULL;   // <-- no B-Tree automatically
     
     table->column_count++;
+    return 0;
+}
+
+// Creates a B-Tree index on the given column and populates it from
+// existing rows. Used for PRIMARY KEY, UNIQUE, and CREATE INDEX.
+// Returns 0 on success, -1 on failure.
+int table_create_index(Table *table, int col_idx) {
+    if (!table) return -1;
+    if (col_idx < 0 || col_idx >= table->column_count) return -1;
+    
+    Column *col = &table->columns[col_idx];
+    
+    // Only INTEGER columns can be indexed by the current B-Tree
+    if (col->type != TYPE_INTEGER && col->type != TYPE_BOOLEAN) {
+        return 0;   // silently no-op for non-integer columns
+    }
+    
+    // Already indexed
+    if (col->index != NULL) {
+        return 0;
+    }
+    
+    col->index = btree_create();
+    if (!col->index) return -1;
+    
+    // Populate from existing rows. If a duplicate value is found,
+    // the B-Tree insert fails and we roll back the index.
+    for (size_t r = 0; r < table->row_count; r++) {
+        void **row = (void**)table->rows[r];
+        int key = *(int*)row[col_idx];
+        
+        if (btree_insert(col->index, key, row) != 0) {
+            // Duplicate found. Since we're building a UNIQUE index,
+            // this is a real error. Destroy and report.
+            printf("ERROR: Cannot create unique index on '%s' — duplicate value %d\n",
+                   col->name, key);
+            btree_destroy(col->index);
+            col->index = NULL;
+            return -1;
+        }
+    }
+    
     return 0;
 }
 
