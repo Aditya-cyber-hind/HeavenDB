@@ -3,49 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HeavenDB Dashboard</title>
+    <title>HeavenDB</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🗄️ HeavenDB Dashboard</h1>
-            <p>Real-time database monitor</p>
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="loginScreen" class="login-screen">
+    <div class="login-card">
+        <div class="login-logo">🗄️</div>
+        <h1>HeavenDB</h1>
+        <p class="subtitle">SQL Database Engine</p>
+        
+        <div class="form-group">
+            <label for="loginUser">Username</label>
+            <input type="text" id="loginUser" value="admin" autocomplete="username" spellcheck="false">
         </div>
-
-        <div id="loginBox" class="connection">
-            <input type="text" id="loginUser" placeholder="Username" value="admin">
-            <input type="password" id="loginPass" placeholder="Password">
-            <button onclick="doLogin()">Log In</button>
-            <span id="loginStatus"></span>
+        
+        <div class="form-group">
+            <label for="loginPass">Password</label>
+            <input type="password" id="loginPass" autocomplete="current-password"
+                   onkeypress="if(event.key==='Enter') doLogin()">
         </div>
-
-        <div id="mainBox" style="display:none;">
-            <div class="connection">
-                <span id="whoami">Not logged in</span>
-                <button onclick="doLogout()">Log Out</button>
-            </div>
-
-            <div class="query-box">
-                <input type="text" id="query" placeholder="Type SQL query..." onkeypress="handleEnter(event)">
-                <button onclick="executeQuery()">Run</button>
-            </div>
-
-            <div class="content">
-                <div class="sidebar">
-                    <h3>Tables</h3>
-                    <ul id="tableList">
-                        <li>Run SHOW TABLES to list</li>
-                    </ul>
-                </div>
-                <div class="results">
-                    <h3>Results</h3>
-                    <pre id="output">Run a query to see results here...</pre>
-                </div>
-            </div>
-        </div>
+        
+        <button id="loginBtn" class="btn-primary" onclick="doLogin()">Log In</button>
+        <div id="loginError" class="error-msg"></div>
     </div>
+</div>
 
-    <script src="app.js"></script>
+<!-- ============ MAIN APP ============ -->
+<div id="appScreen" class="app-screen" style="display:none;">
+    <header class="topbar">
+        <div class="brand">
+            <span class="logo">🗄️</span>
+            <span class="name">HeavenDB</span>
+        </div>
+        <div class="user-info">
+            <span class="dot"></span>
+            <span id="whoami">—</span>
+            <button class="btn-ghost" onclick="doLogout()">Log Out</button>
+        </div>
+    </header>
+    
+    <div class="workspace">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3>Tables</h3>
+                <button class="icon-btn" onclick="loadTables()" title="Refresh">↻</button>
+            </div>
+            <ul id="tableList" class="table-list">
+                <li class="placeholder">Loading…</li>
+            </ul>
+        </aside>
+        
+        <main class="main">
+            <div class="query-bar">
+                <input type="text" id="queryInput"
+                       placeholder="Type SQL and press Enter…"
+                       onkeypress="if(event.key==='Enter') runQuery()"
+                       spellcheck="false" autocomplete="off">
+                <button class="btn-primary" onclick="runQuery()" id="runBtn">Run</button>
+            </div>
+            
+            <div id="statusBar" class="status-bar"></div>
+            
+            <div id="resultArea" class="result-area">
+                <div class="empty-state">
+                    <div class="empty-icon">⚡</div>
+                    <div>Run a query to see results</div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>

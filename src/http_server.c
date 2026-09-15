@@ -13,7 +13,6 @@
 
 static int http_running = 0;
 static SOCKET http_socket;
-static int sql_initialized = 0;
 static SessionStore *session_store = NULL;
 
 // Forward declaration — auth_system is defined in sql.c

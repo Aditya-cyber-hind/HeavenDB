@@ -84,3 +84,29 @@ SELECT * FROM ftest WHERE price > 15 AND id > 2
 
 -- EXPECT: 2 rows (id=2, id=3)
 SELECT * FROM ftest WHERE price > 15 OR id = 1
+
+-- ============================================
+-- TEST 8: Compound WHERE with 3+ conditions
+-- ============================================
+DROP TABLE IF EXISTS wtest
+CREATE TABLE wtest (id INTEGER, price FLOAT, active BOOLEAN, name TEXT)
+INSERT INTO wtest VALUES (1, 10.5, TRUE, 'alice')
+INSERT INTO wtest VALUES (2, 20.0, FALSE, 'bob')
+INSERT INTO wtest VALUES (3, 30.5, TRUE, 'carol')
+INSERT INTO wtest VALUES (4, 40.0, TRUE, 'dave')
+INSERT INTO wtest VALUES (5, 50.0, FALSE, 'eve')
+
+-- EXPECT: 2 rows (id=3, id=4)
+SELECT * FROM wtest WHERE price > 15 AND active = TRUE
+
+-- EXPECT: 2 rows (id=4 only; id=3 fails id > 3)
+SELECT * FROM wtest WHERE price > 15 AND active = TRUE AND id > 3
+
+-- EXPECT: 3 rows (id=3, id=4, id=5)
+SELECT * FROM wtest WHERE price > 35 OR active = FALSE
+
+-- EXPECT: 3 rows (id=2, id=3, id=4) - AND binds tighter than OR
+SELECT * FROM wtest WHERE price > 25 AND active = TRUE OR id = 2
+
+-- EXPECT: 1 row (id=4) - parenthesized, different from above
+SELECT * FROM wtest WHERE price > 25 AND (active = TRUE OR id = 2)
